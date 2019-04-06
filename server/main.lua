@@ -4,29 +4,30 @@ ESX.RegisterServerCallback('JAM_Drugs:PurchaseDrug', function(source, cb, drug, 
 	local xPlayer = ESX.GetPlayerFromId(source)
 	if not xPlayer then return; end
 
-	local hasEnough = 0
+	local hasEnough = false
+	local msg = ''
 	local playerId = xPlayer.getIdentifier()	
 	local cleanMoney = xPlayer.getMoney()
 	local dirtyMoney = xPlayer.getAccount('black_money').money
 	local drugInventory = xPlayer.getInventoryItem(drug)
 	local finalVal = price * amount
 
-
 	if not drugInventory or (drugInventory.count + amount) <= drugInventory.limit then
-		if dirtyMoney >= finalVal * 0.8 then	
-			xPlayer.removeAccountMoney('black_money', finalVal * 0.8)
+		if dirtyMoney >= finalVal * 0.8 then
+			finalVal = finalVal * 0.8			
+			hasEnough = true
+			msg = ' dirty money.'
+			xPlayer.removeAccountMoney('black_money', finalVal)
+			xPlayer.addInventoryItem(drug, amount)	
+		elseif cleanMoney >= (finalVal * 1.2) then
+			finalVal = finalVal * 1.2			
+			hasEnough = true
+			msg = ' clean money.'
+			xPlayer.removeMoney(finalVal)
 			xPlayer.addInventoryItem(drug, amount)
-			hasEnough = 2	
-
-		elseif cleanMoney >= (finalVal * 1.2) then		
-			xPlayer.removeMoney(finalVal * 1.2)
-			xPlayer.addInventoryItem(drug, amount)
-			hasEnough = 3
-		end
-	else
-		hasEnough = 1 		
+		end		
 	end
-	cb(hasEnough)
+	cb(hasEnough, msg, finalVal)
 end)
 
 ESX.RegisterServerCallback('JAM_Drugs:SellDrug', function(source, cb, drug, price, amount)
