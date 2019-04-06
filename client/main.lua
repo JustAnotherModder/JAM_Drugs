@@ -380,7 +380,7 @@ function JAM_Drugs:SpawnEntities()
                 Citizen.Wait(0)
             end
             
-            local newPed = CreatePed(v.Type, v.ModelHash, v.Pos, v.Heading, true, false) 
+            local newPed = CreatePed(v.Type, v.ModelHash, v.Pos, v.Heading, false, false) 
 
             SetEntityInvincible(newPed, v.Invincible)
             FreezeEntityPosition(newPed, v.FreezeEnt)
