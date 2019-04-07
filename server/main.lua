@@ -1,92 +1,79 @@
+JAM_Garage = {}
+
 TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)	
 
-ESX.RegisterServerCallback('JAM_Drugs:PurchaseDrug', function(source, cb, drug, price, amount)
+function JAM_Garage:GetPlayerVehicles(identifier)	
+	local playerVehicles = {}
+	local data = MySQL.Sync.fetchAll("SELECT * FROM owned_vehicles WHERE owner=@identifier",{['@identifier'] = identifier})	
+	for key,val in pairs(data) do
+		local playerVehicle = json.decode(val.vehicle)
+		table.insert(playerVehicles, {owner = val.owner, veh = val.vehicle, vehicle = playerVehicle, plate = val.plate, state = val.jamstate})
+	end
+	return playerVehicles
+end
+
+ESX.RegisterServerCallback('JAM_Garage:StoreVehicle', function(source, cb, vehicleProps)
+	local isFound = false
 	local xPlayer = ESX.GetPlayerFromId(source)
+
 	if not xPlayer then return; end
 
-	local hasEnough = false
-	local msg = ''
-	local playerId = xPlayer.getIdentifier()	
-	local cleanMoney = xPlayer.getMoney()
-	local dirtyMoney = xPlayer.getAccount('black_money').money
-	local drugInventory = xPlayer.getInventoryItem(drug)
-	local finalVal = price * amount
+	local playerVehicles = JAM_Garage:GetPlayerVehicles(xPlayer.getIdentifier())
+	local plate = vehicleProps.plate
 
-	if not drugInventory or (drugInventory.count + amount) <= drugInventory.limit then
-		if dirtyMoney >= finalVal * 0.8 then
-			finalVal = finalVal * 0.8			
-			hasEnough = true
-			msg = ' dirty money.'
-			xPlayer.removeAccountMoney('black_money', finalVal)
-			xPlayer.addInventoryItem(drug, amount)	
-		elseif cleanMoney >= (finalVal * 1.2) then
-			finalVal = finalVal * 1.2			
-			hasEnough = true
-			msg = ' clean money.'
-			xPlayer.removeMoney(finalVal)
-			xPlayer.addInventoryItem(drug, amount)
+	for key,val in pairs(playerVehicles) do
+		if(plate == val.plate) then
+			local vehProps = json.encode(vehicleProps)
+			MySQL.Sync.execute("UPDATE owned_vehicles SET vehicle=@vehProps WHERE plate=@plate",{['@vehProps'] = vehProps, ['@plate'] = val.plate})
+			isFound = true
+			break
+		end
+	end
+	cb(isFound)
+end)
+
+ESX.RegisterServerCallback('JAM_Garage:GetVehicles', function(source, cb)
+	local xPlayer = ESX.GetPlayerFromId(source)
+
+	if not xPlayer then return; end
+
+	local vehicles = JAM_Garage:GetPlayerVehicles(xPlayer.getIdentifier())
+
+	cb(vehicles)
+end)
+
+RegisterNetEvent('JAM_Garage:ChangeState')
+AddEventHandler('JAM_Garage:ChangeState', function(plate, state)
+	local xPlayer = ESX.GetPlayerFromId(source)
+
+	if not xPlayer then return; end
+
+	local vehicles = JAM_Garage:GetPlayerVehicles(xPlayer.getIdentifier())
+	for key,val in pairs(vehicles) do
+		if(plate == val.plate) then
+			MySQL.Sync.execute("UPDATE owned_vehicles SET jamstate=@state WHERE plate=@plate",{['@state'] = state , ['@plate'] = plate})
+			break
 		end		
 	end
-	cb(hasEnough, msg, finalVal)
 end)
 
-ESX.RegisterServerCallback('JAM_Drugs:SellDrug', function(source, cb, drug, price, amount)
-	local xPlayer = ESX.GetPlayerFromId(source)
-	if not xPlayer then return; end
+function JAM_Garage.Startup()
+	local dbconfig  =
+	{
+	  	{ ["@dbtable@"] = "owned_vehicles", ["@dbfield@"] = "jamstate", ["@dbfieldconf@"] = "int(11) NOT NULL DEFAULT 0", },
+	}
 
-	local hasEnough = false
-	local playerId = xPlayer.getIdentifier()	
-	local drugs = xPlayer.getInventoryItem(drug)
-	local money = xPlayer.getAccount('black_money').money
+	local query1 = "SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE COLUMN_NAME='@dbfield@' and TABLE_NAME='@dbtable@';"
+	local query2 = "ALTER TABLE `@dbtable@` ADD COLUMN `@dbfield@` @dbfieldconf@;"
 
-	if drugs and drugs.count >= amount then
-		xPlayer.removeInventoryItem(drug, amount)
-		xPlayer.addAccountMoney('black_money', (amount * price))
-		hasEnough = true
-	end
-	cb(hasEnough)
-end)
-
-function JAM_Drugs.Robbed()
-	local xPlayer
-	while not xPlayer do xPlayer = ESX.GetPlayerFromId(source); end
-	local meth = xPlayer.getInventoryItem('meth')
-	local coke = xPlayer.getInventoryItem('cocaine')
-	local money = xPlayer.getAccount('black_money').money
-
-	if meth and meth.count > 0 then xPlayer.removeInventoryItem('meth', (meth.count / 10)); end
-	if coke and coke.count > 0 then xPlayer.removeInventoryItem('cocaine', (coke.count / 10)); end
-	if money then xPlayer.removeAccountMoney('black_money', (money / 10)); end
-end
-
-RegisterNetEvent('JAM_Drugs:GotRobbed')
-AddEventHandler('JAM_Drugs:GotRobbed', JAM_Drugs.Robbed)
-
-function JAM_Drugs.Startup()
-	local data = MySQL.Sync.fetchAll("SELECT * FROM items")	
-	for k,v in pairs(JAM_Drugs.Config.Items) do	
-		local intable = false
-		for key,val in pairs(data) do
-			if v.Name == val.name then
-				intable = true
-				if not v.Limit == val.limit then
-					MySQL.Sync.execute("UPDATE items SET limit=@limit",{['@limit'] = v.Limit})
-				end
-			end
-		end
-
-		if not intable then
-			MySQL.Async.execute('INSERT INTO `items` (`name`, `label`, `limit`, `rare`, `can_remove`) VALUES (@name, @label, @limit, @rare, @can_remove)',
-			{
-				['@name']   = v.Name,
-				['@label']   = v.Label,
-				['@limit'] = v.Limit,
-				['@rare']	 = v.Rare,
-				['@can_remove']	 = v.CanRemove,
-			})
-		end
+	for _,c in pairs(dbconfig) do
+		  local curquery1 = query1
+		  local curquery2 = query2
+		  for repThis,repWith in pairs(c) do curquery1 = curquery1:gsub(repThis,repWith); curquery2 = curquery2:gsub(repThis,repWith); end;
+		  local data = MySQL.Sync.fetchAll( curquery1 )
+		  if #data == 0 then  MySQL.Sync.fetchAll( curquery2 );  end;
 	end
 end
 
-RegisterNetEvent('JAM_Drugs:Startup')
-AddEventHandler('JAM_Drugs:Startup', JAM_Drugs.Startup)
+RegisterNetEvent('JAM_Garage:Startup')
+AddEventHandler('JAM_Garage:Startup', JAM_Garage.Startup)
