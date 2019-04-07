@@ -1,7 +1,7 @@
-##JAM_Drugs
+# JAM_Drugs
 
--So I heard you like Gangwars?
+- So I heard you like Gangwars?
 
-##NOTES
+# NOTES
 
--Incomplete. Don't use.
+- Incomplete. Don't use.
