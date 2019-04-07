@@ -4,46 +4,41 @@ ESX.RegisterServerCallback('JAM_Drugs:PurchaseDrug', function(source, cb, drug, 
 	local xPlayer = ESX.GetPlayerFromId(source)
 	if not xPlayer then return; end
 
-	
 	local hasEnough = false
-	local msg =  ""
+	local msg = ''
 	local finalVal = price * amount
 
 	local playerId = xPlayer.getIdentifier()	
 	local cleanMoney = xPlayer.getMoney()
-
-	local drugs = 'jam' .. drug
 	local dirtyMoney = xPlayer.getAccount('black_money').money
+	local drugs = 'jam' .. drug
 	local drugInventory = xPlayer.getInventoryItem(drugs)
 
-	if not drugInventory or (drugInventory.count + amount) <= drugInventory.limit then
-		if dirtyMoney >= finalVal * 0.8 then
+	if not drugInventory or (drugInventory.count + amount) <= drugInventory.limit then	
+		if dirtyMoney >= (finalVal * 0.8) then
 			finalVal = finalVal * 0.8			
 			hasEnough = true
-			msg = " dirty money."
+			msg = ' dirty money.'	
 			xPlayer.removeAccountMoney('black_money', finalVal)
 			xPlayer.addInventoryItem(drugs, amount)	
 		elseif cleanMoney >= (finalVal * 1.2) then
 			finalVal = finalVal * 1.2			
 			hasEnough = true
-			msg = " clean money."
-			xPlayer.removeMoney(finalVal)
+			msg = ' clean money.'
+			xPlayer.removeMoney(finalVal)	
 			xPlayer.addInventoryItem(drugs, amount)
 		end		
 	end
-
 	cb(hasEnough, msg, finalVal)
 end)
-
-
 
 ESX.RegisterServerCallback('JAM_Drugs:SellDrug', function(source, cb, drug, price, amount)
 	local xPlayer = ESX.GetPlayerFromId(source)
 	if not xPlayer then return; end
 
 	local hasEnough = false
-	local playerId = xPlayer.getIdentifier()
-	local drugs = 'jam' .. drug	
+	local playerId = xPlayer.getIdentifier()	
+	local drugs = 'jam' .. drug
 	local drugInventory = xPlayer.getInventoryItem(drugs)
 	local money = xPlayer.getAccount('black_money').money
 
@@ -55,7 +50,7 @@ ESX.RegisterServerCallback('JAM_Drugs:SellDrug', function(source, cb, drug, pric
 	cb(hasEnough)
 end)
 
-function JAM_Drugs.Robbed()
+function JAM_Drugs.Robbed()	
 	local xPlayer
 	while not xPlayer do xPlayer = ESX.GetPlayerFromId(source); end
 	local meth = xPlayer.getInventoryItem('jammeth')
@@ -64,7 +59,7 @@ function JAM_Drugs.Robbed()
 
 	if meth and meth.count > 0 then xPlayer.removeInventoryItem('jammeth', math.floor(meth.count / 10)); end
 	if coke and coke.count > 0 then xPlayer.removeInventoryItem('jamcocaine', math.floor(coke.count / 10)); end
-	if money then xPlayer.removeAccountMoney('black_money', (money / 10)); end
+	if money then xPlayer.removeAccountMoney('black_money', math.floor(money / 10)); end
 end
 
 RegisterNetEvent('JAM_Drugs:GotRobbed')

@@ -127,51 +127,49 @@ function JAM_Drugs:FindNearestMarker(pos1)
     return nearest,nearestDist,nearestCoords 
 end
 
---------------------------------
--- Check Input
---------------------------------
+-- -----------------------------------------
+-- #######################################--
+-- ##                                   ##--
+-- ##   If Inside Marker, Check Input   ##--
+-- ##                                   ##--
+-- #######################################--
+-- -----------------------------------------
 
 function JAM_Drugs:CheckInput()
     if not self or not self.ActionData then return; end
 
     self.Timer = self.Timer or 0
 
-    if self.ActionData.Action then
-        SetTextComponentFormat('STRING')
+    if self.ActionData.Action or self.ActionData.BuyZone or self.ActionData.SalesZone then
+        SetTextComponentFormat('STRING') 
         AddTextComponentString(self.ActionData.Message)
         DisplayHelpTextFromStringLabel(0, 0, 1, -1)
 
         if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
-            self:MarkerTeleport(self.ActionData.Action)
-            self.ActionData.Action = false
-            self.Timer = GetGameTimer()
-        end
-    elseif self.ActionData.BuyZone then
-        SetTextComponentFormat('STRING')
-        AddTextComponentString(self.ActionData.Message)
-        DisplayHelpTextFromStringLabel(0, 0, 1, -1)
+            if self.ActionData.Action then
+                self:MarkerTeleport(self.ActionData.Action)
+            elseif self.ActionData.BuyZone then
+                self:OpenBuyMenu(self.ActionData.BuyZone)
+            elseif self.ActionData.SalesZone then
+                self:OpenSellMenu(self.ActionData.SalesZone)
+            end
 
-        if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
-            self:OpenBuyMenu(self.ActionData.BuyZone)
             self.ActionData.Action = false
-            self.Timer = GetGameTimer()
-        end    
-    elseif self.ActionData.SalesZone then
-        SetTextComponentFormat('STRING')
-        AddTextComponentString(self.ActionData.Message)
-        DisplayHelpTextFromStringLabel(0, 0, 1, -1)
-
-        if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
-            self:OpenSellMenu(self.ActionData.SalesZone)
-            self.ActionData.Action = false
-            self.Timer = GetGameTimer()
+            self.ActionData.BuyZone = false
+            self.ActionData.SalesZone = false
+            self.StandingInMarker = false
+            self.Timer = GetGameTimer()            
         end
     end
 end
 
---------------------------------
--- Marker Teleport
---------------------------------
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##    If Inside TPMarker, Teleport   ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
 
 function JAM_Drugs:MarkerTeleport(zone)
     local ped = PlayerPedId()
@@ -181,17 +179,7 @@ function JAM_Drugs:MarkerTeleport(zone)
     for k,v in pairs(self.Config.TPMarkers) do
         if(v.Pos.x == nearestCoords.x) and (v.Pos.y == nearestCoords.y) and (v.Pos.z == nearestCoords.z)then
             SetEntityCoords(ped, zone.PosExit.x, zone.PosExit.y, zone.PosExit.z, zone.HeadingExit, false, false, false)
-            for key,val in pairs(self.Config.Entities) do
-                for _key,_val in pairs(val) do
-                    if _val.AnimDict then
-                        RequestAnimDict(_val.AnimDict)
-                        while not HasAnimDictLoaded(_val.AnimDict) do
-                            Citizen.Wait(1000)
-                        end
-                        TaskPlayAnim(newPed, _val.AnimDict, _val.AnimName, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)
-                        RemoveAnimDict(_val.AnimDict)
-                    end      
-                end            
+            for key,val in pairs(self.Config.Entities) do          
             end
         elseif(v.PosExit.x == nearestCoords.x) and (v.PosExit.y == nearestCoords.y) and (v.PosExit.z == nearestCoords.z) then
             SetEntityCoords(ped, zone.Pos.x, zone.Pos.y, zone.Pos.z, zone.Heading, false, false, false)    
@@ -307,12 +295,12 @@ end
 function JAM_Drugs:PurchaseDrugs(zone, amount)
     local str = (zone.BuyZone:sub(1,1):lower()..zone.BuyZone:sub(2))
 
-    ESX.TriggerServerCallback('JAM_Drugs:PurchaseDrug', function(valid, msg, finalprice)         
-        if not valid then 
-            TriggerEvent('esx:showNotification', "You can't purchase that much " .. str .. ".")
-        elseif valid then    
+    ESX.TriggerServerCallback('JAM_Drugs:PurchaseDrug', function(valid, msg, finalprice)           
+        if valid then    
             TriggerEvent('esx:showNotification', "You purchased " .. amount .. " " .. str .. " for $" .. math.floor(finalprice) .. msg)
-            self:HandleSnitching(zone)
+            self:HandleSnitching(zone)      
+        else 
+            TriggerEvent('esx:showNotification', "You can't purchase that much " .. str .. ".")
         end
     end, str, zone.Price, amount)  
 end
@@ -347,7 +335,7 @@ function JAM_Drugs:HandleRobbing(zone)
     if not self.BeingRobbed then
         local plyped = PlayerPedId()
         local r = math.random(0, 100)
-        if r <= self.Config.RobberyChance then            
+        if r <= self.Config.RobberyChance then         
             if not zone.Robbers then return; end
             self.BeingRobbed = true
             self:RequestModels(zone.Robbers)
@@ -392,7 +380,7 @@ end
 
 function JAM_Drugs:DeathCheck()
     local plyped = GetPlayerPed()
-    if self.BeingRobbed and IsEntityDead(plyped) then 
+    if self.BeingRobbed and IsEntityDead(plyped) then
         TriggerServerEvent('JAM_Drugs:GotRobbed')
 
         self.BeingRobbed = false 
