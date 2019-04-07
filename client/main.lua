@@ -1,150 +1,297 @@
--------------------------------------------
---#######################################--
---##                                   ##--
---##       Get ESX shared object       ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Garage:GetSharedObject(obj) self.ESX = obj; ESX = obj; end
+function JAM_Drugs:GetSharedObject(obj) self.ESX = obj; ESX = obj; end
 
 -------------------------------------------
 --#######################################--
 --##                                   ##--
---##      Blip and Marker Updates      ##--
+--##          Markers & Blips          ##--
 --##                                   ##--
 --#######################################--
 -------------------------------------------
 
-function JAM_Garage:UpdateMarkers()
-    if not self or not self.Config or not self.Config.Markers then return; end
-
-    for key,val in pairs(self.Config.Markers) do
-        if GetDistanceBetweenCoords(GetEntityCoords(PlayerPedId()), val.Pos.x, val.Pos.y, val.Pos.z) < self.Config.MarkerDrawDistance then
-            DrawMarker(val.Type, val.Pos.x, val.Pos.y, val.Pos.z, 0.0, 0.0, 0.0, 0, 0.0, 0.0, val.Scale.x, val.Scale.y, val.Scale.z, val.Color.r, val.Color.g, val.Color.b, 100, false, true, 2, false, false, false, false)
-        end
-    end
-end
-
-function JAM_Garage:UpdateBlips()
+function JAM_Drugs:UpdateBlips()
     if not self or not self.Config or not self.Config.Blips then return; end
 
+    local playerPos = GetEntityCoords(GetPlayerPed())
     for key,val in pairs(self.Config.Blips) do
-        local blip = AddBlipForCoord(val.Pos.x, val.Pos.y, val.Pos.z)
-        SetBlipSprite               (blip, val.Sprite)
-        SetBlipDisplay              (blip, val.Display)
-        SetBlipScale                (blip, val.Scale)
-        SetBlipColour               (blip, val.Color)
-        SetBlipAsShortRange         (blip, true)
-        BeginTextCommandSetBlipName ("STRING")
-        AddTextComponentString      (val.Zone)
-        EndTextCommandSetBlipName   (blip)
+        local curDist = self:GetVecDist(playerPos, val.Pos)
+        if curDist <= val.Radius and not val.blip then
+            local blip = AddBlipForCoord(val.Pos)
+
+            SetBlipSprite               (blip, val.Sprite)
+            SetBlipDisplay              (blip, val.Display)
+            SetBlipScale                (blip, val.Size)
+            SetBlipColour               (blip, val.Color)
+            SetBlipAsShortRange         (blip, true)
+
+            BeginTextCommandSetBlipName ("STRING")
+            AddTextComponentString      (val.Zone)
+            EndTextCommandSetBlipName   (blip)
+
+            val.blip = blip
+
+        elseif curDist > val.Radius and val.blip then
+            local blip = val.blip            
+            val.blip = nil;
+            RemoveBlip(blip);
+        end
     end
 end
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##       Check player position       ##--
---##        relevant to markers        ##--
---##                                   ##--
---#######################################--
--------------------------------------------
+function JAM_Drugs:UpdateMarkers()
+    if not self or not self.Config or not self.Config.Blips then return; end
 
-function JAM_Garage:CheckPosition()
-    if not self or not self.Config or not self.Config.Markers then return; end
+    local localCoords = GetEntityCoords(PlayerPedId())
+
+    local nearest,nearestDist,nearestCoords = self:FindNearestMarker(localCoords)
+    if nearestDist < self.Config.MarkerDrawDist then
+        self:MarkerHandler(nearest.Pos, nearest.Scale)
+    end
+end
+
+--------------------------------
+-- Check Position
+--------------------------------
+
+function JAM_Drugs:CheckPosition()
+    if not self or not self.Config or not self.Config.TPMarkers then return; end
 
     self.StandingInMarker = self.StandingInMarker or false
-    self.CurrentGarage = self.CurrentGarage or {}
 
     local standingInMarker = false
+    local localCoords = GetEntityCoords(PlayerPedId())
 
-    for key,val in pairs(self.Config.Markers) do
-        if GetDistanceBetweenCoords(GetEntityCoords(PlayerPedId()), val.Pos.x, val.Pos.y, val.Pos.z) < val.Scale.x then
-            self.CurrentGarage = val
-            standingInMarker = true
-        end
+    local nearest,nearestDist,nearestCoords = self:FindNearestMarker(localCoords)
+
+    if nearestDist < nearest.Scale.x then
+        standingInMarker = true
     end
 
     if standingInMarker and not self.StandingInMarker then
+
         self.StandingInMarker = true
         self.ActionData = ActionData or {};
-        self.ActionData.Action = self.CurrentGarage.Zone            
-        self.ActionData.Message = 'Press ~INPUT_PICKUP~ to open the ' .. (self.CurrentGarage.Zone:sub(1,1):lower()..self.CurrentGarage.Zone:sub(2)) .. '.'
+        if nearest.Zone then
+            self.ActionData.Action = nearest  
+            self.ActionData.BuyZone = false
+            self.ActionData.SalesZone = false     
+            self.ActionData.Message = 'Press ~INPUT_PICKUP~ to access the ' .. nearest.Zone
+        elseif nearest.BuyZone then
+            self.ActionData.Action = false  
+            self.ActionData.BuyZone = nearest 
+            self.ActionData.SalesZone = false    
+            self.ActionData.Message = 'Press ~INPUT_PICKUP~ to purchase ' .. nearest.BuyZone
+        elseif nearest.SalesZone then
+            self.ActionData.Action = false  
+            self.ActionData.BuyZone = false
+            self.ActionData.SalesZone = nearest   
+            self.ActionData.Message = 'Press ~INPUT_PICKUP~ to sell ' .. nearest.SalesZone
+        end
     end
 
     if not standingInMarker and self.StandingInMarker then
         self.StandingInMarker = false
         self.ActionData.Action = false
+        self.ActionData.BuyZone = false
+        self.ActionData.SalesZone = false
         self.ESX.UI.Menu.CloseAll()
     end
 end
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##        Check for input if         ##--
---##           inside marker           ##--
---##                                   ##--
---#######################################--
--------------------------------------------
+function JAM_Drugs:FindNearestMarker(pos1) 
+    if type(pos1) ~= "vector3" and type(pos1) ~= "table" then 
+        return 999999999 
+    end
 
-function JAM_Garage:CheckInput()
+    local nearest,nearestDist,nearestCoords 
+
+    for k,v in pairs(self.Config.TPMarkers) do 
+        local curDist = self:GetVecDist(pos1, v.Pos)
+        local curDistExit = self:GetVecDist(pos1, v.PosExit)
+
+        if not nearestDist or nearestDist > curDist then
+            nearest,nearestDist,nearestCoords = v,curDist,v.Pos 
+        end
+
+        if not nearestDist or nearestDist > curDistExit then 
+            nearest,nearestDist,nearestCoords = v,curDistExit,v.PosExit
+        end
+    end
+
+    for k,v in pairs(self.Config.ActionMarkers) do
+        local curDist = self:GetVecDist(pos1, v.Pos)
+        if not nearestDist or nearestDist > curDist then
+            nearest,nearestDist,nearestCoords = v,curDist,v.Pos 
+        end
+    end
+
+    return nearest,nearestDist,nearestCoords 
+end
+
+--------------------------------
+-- Check Input
+--------------------------------
+
+function JAM_Drugs:CheckInput()
     if not self or not self.ActionData then return; end
 
     self.Timer = self.Timer or 0
 
-    if self.ActionData.Action ~= false then
+    if self.ActionData.Action then
         SetTextComponentFormat('STRING')
         AddTextComponentString(self.ActionData.Message)
         DisplayHelpTextFromStringLabel(0, 0, 1, -1)
 
         if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
-            self:OpenGarageMenu(self.ActionData.Action)
+            self:MarkerTeleport(self.ActionData.Action)
+            self.ActionData.Action = false
+            self.Timer = GetGameTimer()
+        end
+    elseif self.ActionData.BuyZone then
+        SetTextComponentFormat('STRING')
+        AddTextComponentString(self.ActionData.Message)
+        DisplayHelpTextFromStringLabel(0, 0, 1, -1)
+
+        if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
+            self:OpenBuyMenu(self.ActionData.BuyZone)
+            self.ActionData.Action = false
+            self.Timer = GetGameTimer()
+        end    
+    elseif self.ActionData.SalesZone then
+        SetTextComponentFormat('STRING')
+        AddTextComponentString(self.ActionData.Message)
+        DisplayHelpTextFromStringLabel(0, 0, 1, -1)
+
+        if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
+            self:OpenSellMenu(self.ActionData.SalesZone)
             self.ActionData.Action = false
             self.Timer = GetGameTimer()
         end
     end
 end
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##            Garage Menu            ##--
---##                                   ##--
---#######################################--
--------------------------------------------
+--------------------------------
+-- Marker Teleport
+--------------------------------
 
-function JAM_Garage:OpenGarageMenu(zone)
+function JAM_Drugs:MarkerTeleport(zone)
+    local ped = PlayerPedId()
+    local localCoords = GetEntityCoords(ped)
+    local nearest,nearestDist,nearestCoords = self:FindNearestMarker(localCoords)
+
+    for k,v in pairs(self.Config.TPMarkers) do
+        if(v.Pos.x == nearestCoords.x) and (v.Pos.y == nearestCoords.y) and (v.Pos.z == nearestCoords.z)then
+            SetEntityCoords(ped, zone.PosExit.x, zone.PosExit.y, zone.PosExit.z, zone.HeadingExit, false, false, false)
+            for key,val in pairs(self.Config.Entities) do
+                for _key,_val in pairs(val) do
+                    if _val.AnimDict then
+                        RequestAnimDict(_val.AnimDict)
+                        while not HasAnimDictLoaded(_val.AnimDict) do
+                            Citizen.Wait(1000)
+                        end
+                        TaskPlayAnim(newPed, _val.AnimDict, _val.AnimName, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)
+                        RemoveAnimDict(_val.AnimDict)
+                    end      
+                end            
+            end
+        elseif(v.PosExit.x == nearestCoords.x) and (v.PosExit.y == nearestCoords.y) and (v.PosExit.z == nearestCoords.z) then
+            SetEntityCoords(ped, zone.Pos.x, zone.Pos.y, zone.Pos.z, zone.Heading, false, false, false)    
+        end
+    end
+end
+
+--------------------------------------------
+--########################################--
+--##                                    ##--
+--##  Inside Action Marker Trade Menus  ##--
+--##                                    ##--
+--########################################--
+--------------------------------------------
+
+function JAM_Drugs:OpenBuyMenu(zone)
     if not self or not self.ESX then return; end
 
     self.ESX.UI.Menu.CloseAll()
 
     local elements = {}
-    table.insert(elements,{label = "List Vehicles: " .. zone, value = zone .. "_List"})
-    table.insert(elements,{label = "Store Vehicle: " .. zone, value = zone .. "_Vehicle"})
+    local buyzone = zone.BuyZone
+    local buyprice = zone.Price
+    table.insert(elements,{label = "Purchase : " .. buyzone .. " : $" .. (buyprice) .. " +/- 20%", value = buyzone .. "_List"})
 
     self.ESX.UI.Menu.Open(
-        'default', GetCurrentResourceName(), zone .. "_Menu",
+        'default', GetCurrentResourceName(), buyzone .. "_Menu",
         {
-            title = zone,
+            title = buyzone,
             align = 'top-left',
             elements = elements,
         },
 
         function(data, menu)
             menu.close()
-            if string.find(data.current.value, "_List") then
-                self:OpenVehicleList(zone)
-            end
 
-            if string.find(data.current.value, "_Vehicle") then
-                self:StoreVehicle(zone)
+            self.keyboardActive = true
+            DisplayOnscreenKeyboard( 0,"","", amount, "", "", "", 30 )
+
+            while self.keyboardActive do
+                if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
+                    self.keyboardActive = false
+                    self.keyboardResult = GetOnscreenKeyboardResult()
+                    local num = tonumber(self.keyboardResult)
+                    if num ~= nil then 
+                        self:PurchaseDrugs(zone, num)
+                    else 
+                        TriggerEvent('esx:showNotification', "Enter a number.")
+                    end
+                end
+            Citizen.Wait(0)
             end
         end,
         function(data, menu)
             menu.close()
-            self.ActionData.Action = self.CurrentGarage.Zone  
+        end
+    )
+end
+
+function JAM_Drugs:OpenSellMenu(zone)
+    if not self or not self.ESX then return; end
+
+    self.ESX.UI.Menu.CloseAll()
+
+    local elements = {}
+    local SalesZone = zone.SalesZone
+    local sellprice = zone.Price
+    table.insert(elements,{label = "Sell : " .. SalesZone .. " : $" .. sellprice, value = SalesZone .. "_List"})
+
+    self.ESX.UI.Menu.Open(
+        'default', GetCurrentResourceName(), SalesZone .. "_Menu",
+        {
+            title = SalesZone,
+            align = 'top-left',
+            elements = elements,
+        },
+
+        function(data, menu)
+            menu.close()
+
+            self.keyboardActive = true
+            DisplayOnscreenKeyboard( 0,"","", amount, "", "", "", 30 )
+
+            while self.keyboardActive do
+            if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
+                self.keyboardActive = false
+                self.keyboardResult = GetOnscreenKeyboardResult()
+                local num = tonumber(self.keyboardResult)
+                if num ~= nil then 
+                    self:SellDrugs(zone, num)
+                else 
+                    TriggerEvent('esx:showNotification', "Enter a number.")
+                end
+            end
+            Citizen.Wait(0)
+            end
+  
+        end,
+        function(data, menu)
+            menu.close()
         end
     )
 end
@@ -152,259 +299,267 @@ end
 -------------------------------------------
 --#######################################--
 --##                                   ##--
---##         Vehicle List Menu         ##--
+--##       Purchase & Sell Drugs       ##--
 --##                                   ##--
 --#######################################--
 -------------------------------------------
 
-function JAM_Garage:OpenVehicleList(zone)
-    if not self or not self.ESX or not ESX then return; end
+function JAM_Drugs:PurchaseDrugs(zone, amount)
+    local str = (zone.BuyZone:sub(1,1):lower()..zone.BuyZone:sub(2))
 
-    local elements = {}
-    ESX.TriggerServerCallback('JAM_Garage:GetVehicles', function(vehicles)
-        for key,val in pairs(vehicles) do
-            local hashVehicle = val.vehicle.model
-            local vehiclePlate = val.plate
-            local vehicleName = GetDisplayNameFromVehicleModel(hashVehicle)
-            local labelvehicle
-
-            if val.state == 1 then
-                labelvehicle = vehiclePlate .. " : " .. vehicleName .. " : Garage"            
-            elseif val.state == 2 then
-                labelvehicle = vehiclePlate .. " : " .. vehicleName .. " : Impound"      
-            else                
-                labelvehicle = vehiclePlate .. " : " .. vehicleName .. " : Unknown"      
-            end 
-
-            table.insert(elements, {label =labelvehicle , value = val})            
+    ESX.TriggerServerCallback('JAM_Drugs:PurchaseDrug', function(valid, msg, finalprice)         
+        if not valid then 
+            TriggerEvent('esx:showNotification', "You can't purchase that much " .. str .. ".")
+        elseif valid then    
+            TriggerEvent('esx:showNotification', "You purchased " .. amount .. " " .. str .. " for $" .. math.floor(finalprice) .. msg)
+            self:HandleSnitching(zone)
         end
+    end, str, zone.Price, amount)  
+end
 
-        self.ESX.UI.Menu.Open(
-        'default', GetCurrentResourceName(), 'Spawn_Vehicle',
-        {
-            title    = 'Garage',
-            align    = 'top-left',
-            elements = elements,
-        },
+function JAM_Drugs:SellDrugs(zone, amount)  
+    local str = (zone.SalesZone:sub(1,1):lower()..zone.SalesZone:sub(2))
 
-        function(data, menu)
-            if zone == 'Garage' then
-                if data.current.value.state == 1 then
-                    menu.close()
-                    JAM_Garage:SpawnVehicle(data.current.value.vehicle)
-                else
-                    TriggerEvent('esx:showNotification', 'Your vehicle is not in the garage.')
+    ESX.TriggerServerCallback('JAM_Drugs:SellDrug', function (valid)
+        if not valid then
+            TriggerEvent('esx:showNotification', "You don't have enough " .. str .. " to sell.")
+        else
+            TriggerEvent('esx:showNotification', "You sold " .. amount .. " " .. str .. " for $" .. math.floor(zone.Price * amount) .. " dirty money.")
+            self:HandleRobbing(zone)
+        end
+    end, str, zone.Price, amount)  
+end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##       Snitching & Robberies       ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:HandleSnitching(zone)
+end
+
+function JAM_Drugs:HandleRobbing(zone)
+    local playerPos = GetEntityCoords(GetPlayerPed())
+    self.BeingRobbed = self.BeingRobbed or false
+    if not self.BeingRobbed then
+        local plyped = PlayerPedId()
+        local r = math.random(0, 100)
+        if r <= self.Config.RobberyChance then            
+            if not zone.Robbers then return; end
+            self.BeingRobbed = true
+            self:RequestModels(zone.Robbers)
+
+            self.robberpeds = self.robberpeds or {}
+
+            for k,v in pairs(zone.Robbers) do
+                
+                local newPed = CreatePed(v.Type, v.ModelHash, v.Pos, v.Heading, true, false) 
+
+                v.ped = newPed
+
+                RemoveAllPedWeapons(newPed, true)
+                GiveWeaponToPed(newPed, v.WeaponModel, 1000, true, true)
+                SetCurrentPedWeapon(newPed, v.WeaponModel, true)
+                SetPedCurrentWeaponVisible(newPed, true, true, true, true)
+
+                SetPedRelationshipGroupHash(newPed, v.RelHash)
+
+                SetPedCombatRange(newPed, 2)
+
+                SetPedMoveRateOverride(newPed, 1.15)
+                SetPedDesiredMoveBlendRatio(newPed, 3.0)
+
+                if not IsPedInCombat(newPed, plyped) then 
+                    TaskCombatPed(newPed, plyPed, 0, 16)
                 end
+
+                table.insert(self.robberpeds,{ped = newPed})
             end
 
-            if zone == 'Impound' then
-                if data.current.value.state == 2 then
-                    menu.close()
-                    JAM_Garage:SpawnVehicle(data.current.value.vehicle)
-                else
-                    TriggerEvent('esx:showNotification', 'Your vehicle is not impounded.')
-                end
+            self:FreeModels(zone.Robbers)
+
+            Citizen.Wait(60000)
+
+            for k,v in pairs(zone.Robbers) do
+                SetPedAsNoLongerNeeded(v.ped)
             end
-        end,
-
-        function(data, menu)
-            menu.close()
-            self:OpenGarageMenu(zone)
         end
-    )   
-    end)
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##      Spawn vehicle function       ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-function RandomizePlate()
-    if not ESX then return; end
-    local playerPed = GetPlayerPed()
-    local vehicle = GetLastDrivenVehicle(playerPed)
-
-    local plateText =
-        string.char(math.random(0x41,0x5a))..
-        string.char(math.random(0x41,0x5a))..
-        string.char(math.random(0x41,0x5a))..
-        string.char(math.random(0x41,0x5a))..
-        string.char(math.random(0x41,0x5a))..
-        string.char(math.random(0x41,0x5a))..
-        string.char(math.random(0x41,0x5a))..
-        string.char(math.random(0x41,0x5a))
-
-    SetVehicleNumberPlateText(vehicle, plateText)
-end
-
-RegisterCommand('me', RandomizePlate)
-
-
-function JAM_Garage:SpawnVehicle(vehicle)
-    if not self or not self.ESX or not ESX then return; end
-    self.DrivenVehicles = self.DrivenVehicles or {}
-
-    ESX.Game.SpawnVehicle(vehicle.model,{
-        x=self.CurrentGarage.Pos.x,
-        y=self.CurrentGarage.Pos.y,
-        z=self.CurrentGarage.Pos.z + 1,                                         
-        },self.CurrentGarage.Heading, function(callback_vehicle)
-        self.ESX.Game.SetVehicleProperties(callback_vehicle, vehicle)
-        SetVehRadioStation(callback_vehicle, "OFF")
-
-        TaskWarpPedIntoVehicle(GetPlayerPed(-1), callback_vehicle, -1)
-        table.insert(self.DrivenVehicles, {vehicle = callback_vehicle})
-
-        local vehicleId GetVehiclePedIsUsing(GetPlayerPed(-1))
-        SetEntityAsMissionEntity(GetVehicleAttachedToEntity(vehicleId), true, true)
-
-        local vehicleProps = self.ESX.Game.GetVehicleProperties(callback_vehicle)
-        TriggerServerEvent('JAM_Garage:ChangeState', vehicleProps.plate, 0)
-        self.ActionData.Action = self.CurrentGarage.Zone  
-    end) 
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##      Store vehicle function       ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Garage:StoreVehicle(zone)
-    if not self or not self.CurrentGarage or not ESX or not self.ESX then return; end
-
-    local playerPed = GetPlayerPed()
-    local vehicle = GetLastDrivenVehicle(playerPed)   
-
-    if not vehicle then return; end
-
-    local vehicleProps = self.ESX.Game.GetVehicleProperties(vehicle)
-    local maxPassengers = GetVehicleMaxNumberOfPassengers(vehicle)
-
-    for seat = -1,maxPassengers-1,1 do
-        local ped = GetPedInVehicleSeat(vehicle,seat)
-        if ped and ped ~= 0 then TaskLeaveVehicle(ped,vehicle,16); end
     end
+end
 
-    while true do
-        if not IsPedInVehicle(GetPlayerPed(), vehicle, false) then
-            ESX.TriggerServerCallback('JAM_Garage:StoreVehicle', function(valid)
-                if(valid) then
-                    DeleteVehicle(vehicle)
-                    if zone == 'Impound' then 
-                        storage = 2
-                    else 
-                        storage = 1 
-                    end
+function JAM_Drugs:DeathCheck()
+    local plyped = GetPlayerPed()
+    if self.BeingRobbed and IsEntityDead(plyped) then 
+        TriggerServerEvent('JAM_Drugs:GotRobbed')
 
-                    TriggerServerEvent('JAM_Garage:ChangeState', vehicleProps.plate, storage);
-                    TriggerEvent('esx:showNotification', 'Your vehicle has been stored.')
-                else
-                    TriggerEvent('esx:showNotification', "You don't own this vehicle.")
-                end
-            end, vehicleProps)
-
-            self.ActionData.Action = self.CurrentGarage.Zone  
-            break
+        self.BeingRobbed = false 
+        Citizen.Wait(1000)
+        for k,v in pairs(self.robberpeds) do 
+            DeletePed(v.ped)
         end
-
-        Citizen.Wait(0)      
     end
 end
 
 -------------------------------------------
 --#######################################--
 --##                                   ##--
---##      Vehicle Check Function       ##--
---##     This automatically sends      ##--
---##    vehicles back to the garage    ##--
---##      when they are likely to      ##--
---##       be trapped in "limbo"       ##--
+--##          Entity Handling          ##--
 --##                                   ##--
 --#######################################--
 -------------------------------------------
 
-function JAM_Garage:LoginCheck()
-    if not ESX then return; end
+function JAM_Drugs:SpawnHandler()  
+    for _k,_v in pairs(self.Config.Entities) do
+        self:RequestModels( _v )  
+        self:SpawnEntities( _v )
+        self:FreeModels( _v )
+    end
+end
 
-    ESX.TriggerServerCallback('JAM_Garage:GetVehicles', function(vehicles)
-        for key,val in pairs(vehicles) do
-            if val.state == 0 or val.state == nil then  
-                TriggerServerEvent('JAM_Garage:ChangeState', val.plate, 1)
-            end      
+function JAM_Drugs:SpawnEntities(table)
+    if type(table) ~= 'table' then return; end
+    for k,v in pairs(table) do            
+        local newPed = CreatePed(v.Type, v.ModelHash, v.Pos, v.Heading, false, false) 
+
+        SetEntityInvincible(newPed, v.Invincible)
+        FreezeEntityPosition(newPed, v.FreezeEnt)
+        SetBlockingOfNonTemporaryEvents(newPed, v.BlockEvents)
+
+        if v.AnimDict then
+            TaskPlayAnim(newPed, v.AnimDict, v.AnimName, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)      
+        end
+
+        if v.WeaponModel then
+            RemoveAllPedWeapons(newPed, true)
+            GiveWeaponToPed(newPed, v.WeaponModel, 1000, true, true)
+            SetCurrentPedWeapon(newPed, v.WeaponModel, true)
+            SetPedCurrentWeaponVisible(newPed, true, true, true, true)
+            SetPedRelationshipGroupHash(newPed, v.RelHash)
+        end
+
+        if v.BoneIndex then
+            local joint = GetPedBoneIndex(newPed, v.BoneIndex)
+            local obj = CreateObject(v.AttachedModel, v.Pos, v.Heading, false, false, false)
+            AttachEntityToEntity(obj, newPed, joint, v.Offset, v.Rot, false, false, false, false, 0, false)
+        end
+    end
+end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##       Load & Unload Models        ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:RequestModels(table)
+    if type(table) ~= 'table' then return; end
+    for k,v in pairs(table) do
+        if not HasModelLoaded(v.ModelHash) then
+            while not HasModelLoaded(v.ModelHash) do
+                RequestModel(v.ModelHash)
+                Citizen.Wait(0)
+            end
+        end    
+
+        if v.BoneIndex and not HasModelLoaded(v.AttachedModel) then
+            while not HasModelLoaded(v.AttachedModel) do
+                RequestModel(v.AttachedModel)
+                Citizen.Wait(0)
+            end
         end        
-    end)
+
+        if v.WeaponModel and not HasWeaponAssetLoaded(v.WeaponModel) then
+            while not HasWeaponAssetLoaded(v.WeaponModel) do
+                RequestWeaponAsset(v.WeaponModel, 31, 0)
+                Citizen.Wait(0)
+            end
+        end
+
+        self:RequestAnimations(v)
+    end
 end
 
-function JAM_Garage:VehicleCheck()    
-    if not self or not self.ESX or not ESX then return; end
-
-    for key,val in pairs(self.DrivenVehicles) do
-        local vehicleProps = self.ESX.Game.GetVehicleProperties(val.vehicle)
-        local maxPassengers = GetVehicleMaxNumberOfPassengers(val.vehicle)
-        local canDelete = true
-
-        for seat = -1,maxPassengers-1,1 do
-            if not IsVehicleSeatFree(val.vehicle, seat) then canDelete = false; end
+function JAM_Drugs:RequestAnimations(table)
+    if table.AnimDict and not HasAnimDictLoaded(table.AnimDict) then
+        while not HasAnimDictLoaded(table.AnimDict) do
+            RequestAnimDict(table.AnimDict)
+            Citizen.Wait(0)
         end
+    end 
+end
 
-        if canDelete then
-            ESX.TriggerServerCallback('JAM_Garage:StoreVehicle', function(valid)
-                if valid and GetDistanceBetweenCoords(GetEntityCoords(PlayerPedId()), GetEntityCoords(val.vehicle)) > self.Config.VehicleDespawnDistance then
-                    for seat = -1,maxPassengers-1,1 do
-                        local ped = GetPedInVehicleSeat(val.vehicle,seat)
-                        if ped and ped ~= 0 then TaskLeaveVehicle(ped,vehicle,16); end
-                    end
-
-                    ESX.Game.DeleteVehicle(val.vehicle)                    
-                    TriggerServerEvent('JAM_Garage:ChangeState', vehicleProps.plate, 1);
-                end
-            end, vehicleProps)
-        end
+function JAM_Drugs:FreeModels(table)
+    if type(table) ~= 'table' then return; end
+    for k,v in pairs(table) do            
+        SetModelAsNoLongerNeeded(v.ModelHash)
+        if v.AnimDict then RemoveAnimDict(v.AnimDict); end
+        if v.BoneIndex then SetModelAsNoLongerNeeded(v.AttachedModel); end
+        if v.WeaponModel then SetModelAsNoLongerNeeded(v.WeaponModel); end
     end
 end
 
 -------------------------------------------
 --#######################################--
 --##                                   ##--
---##        Garage Update Thread       ##--
+--##      Utils Funcs & Commands       ##--
 --##                                   ##--
 --#######################################--
 -------------------------------------------
 
-function JAM_Garage:Update()
+function JAM_Drugs:GetVecDist(v1,v2)
+  if not v1 or not v2 or not v1.x or not v2.x then return 0 ; end
+  return math.sqrt(  ( (v1.x or 0) - (v2.x or 0) )*(  (v1.x or 0) - (v2.x or 0) )+( (v1.y or 0) - (v2.y or 0) )*( (v1.y or 0) - (v2.y or 0) )+( (v1.z or 0) - (v2.z or 0) )*( (v1.z or 0) - (v2.z or 0) )  )
+end
+
+function JAM_Drugs:GetXYDist(x1,y1,z1,x2,y2,z2)
+  return math.sqrt(  ( (x1 or 0) - (x2 or 0) )*(  (x1 or 0) - (x2 or 0) )+( (y1 or 0) - (y2 or 0) )*( (y1 or 0) - (y2 or 0) )+( (z1 or 0) - (z2 or 0) )*( (z1 or 0) - (z2 or 0) )  )
+end
+
+function JAM_Drugs:MarkerHandler(pos, scale)
+    --      Type,  posX,  posY,  posZ,    dirX, dirY, dirZ,    rotX, rotY, rotZ,    scaleX,  scaleY,  scaleZ,    colorR, colorG, colorB,    alpha,     bob,    facecam,   p19,    rotate,    textureDict,    textureName,    drawOnEnts   
+    DrawMarker(1, pos.x, pos.y, pos.z,     0.0,  0.0,  0.0,     0.0,  0.0,  0.0,   scale.x, scale.y, scale.z,       255,    255,    255,        0,   false,      false,     2,     false,          false,          false,        false)
+end
+
+RegisterCommand('hk', function(source, args)
+    local var = ''
+    for i = 1,#args do
+        var = var .. " " .. args[i]
+    end
+    print(GetHashKey(var))
+end, false)
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##           Update Thread           ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:Update()
     Citizen.Wait(1000)
     TriggerEvent('esx:getSharedObject', function(...) self:GetSharedObject(...); end);
-
     Citizen.Wait(1000)
-    TriggerServerEvent('JAM_Garage:Startup')
-
+    TriggerServerEvent('JAM_Drugs:Startup')
     Citizen.Wait(1000)
-    
-    self.tick = 0
-    self.DrivenVehicles = {}
+    self:SpawnHandler()
 
-    self:UpdateBlips()     
-    self:LoginCheck()
-
+    local ped = PlayerPedId()
     while true do
-        self:UpdateMarkers()
+        self.tick = ( self.tick or 0 ) + 1
+
+        self:UpdateBlips()
+        self:UpdateMarkers()  
         self:CheckPosition()
         self:CheckInput()
-
-        if self.tick % 1000 == 0 then 
-            self:VehicleCheck()
-        end
-
-        self.tick = self.tick + 1
-
+        self:DeathCheck()
         Citizen.Wait(0)
     end
 end
 
-Citizen.CreateThread(function(...) JAM_Garage:Update(...); end)
+Citizen.CreateThread(function(...) JAM_Drugs:Update(...); end)
