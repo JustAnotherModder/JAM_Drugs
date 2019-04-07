@@ -404,14 +404,14 @@ JAM_Drugs = {
 				
 		Items = {
 			Meth = {
-				Name = 'meth',
+				Name = 'jammeth',
 				Label = 'Meth',
 				Limit = 100,
 				Rare = 0,
 				CanRemove = 1,
 			},			
 			Cocaine = {
-				Name = 'cocaine',
+				Name = 'jamcocaine',
 				Label = 'Cocaine',
 				Limit = 100,
 				Rare = 0,
