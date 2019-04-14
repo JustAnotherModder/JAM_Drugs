@@ -5,3 +5,4 @@
 # NOTES
 
 - Incomplete. Don't use.
+- Any and all improvements must be sent back to the author (me).
