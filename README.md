@@ -10,5 +10,8 @@
 - https://github.com/JustAnotherModder/JAM_Utilities
 - https://github.com/JustAnotherModder/JAM_SafeCracker
 
+![alttext](https://cdn.discordapp.com/attachments/441865498393575424/563655022156447744/unknown.png)
+![alttext](https://i.imgur.com/2FvhMqS.jpg)
+
 # DISCLAIMER
 - Any and all improvements must be sent back to the author (me).
