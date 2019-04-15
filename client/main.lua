@@ -1,4 +1,52 @@
-function JAM_Drugs:GetSharedObject(obj) self.ESX = obj; ESX = obj; end
+function JAM_Drugs:GetESX(obj) self.ESX = obj; ESX = obj; end
+function JAM_Drugs:GetJUtils(obj) self.JUtils = obj; JUtils = obj; end
+function JAM_Drugs:GetJSC(obj) self.JSC = obj; JSC = obj; end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##       Client Start & Update       ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:ClientStart()
+	if not self then return; end
+	while not ESX or not self.ESX or not JSC or not self.JSC or not JUtils or not self.JUtils do
+		TriggerEvent('esx:getSharedObject', function(...) self:GetESX(...); end)
+        TriggerEvent('JAM_Utilities:GetSharedObject', function(...) self:GetJUtils(...); end)
+        TriggerEvent('JAM_SafeCracker:GetSharedObject', function(...) self:GetJSC(...); end)
+		Citizen.Wait(0)
+	end
+
+    self:ClientUpdate()
+end
+
+function JAM_Drugs:ClientUpdate()
+	if not self then return; end
+	while true do
+        self.tick = (self.tick or 0) + 1
+
+        if self.tick % 100 == 1 then self:GetNearest(); self:BlipCheck(); end        
+
+        self:InputCheck()
+        self:MarkerCheck()                   
+        self:PositionCheck()
+  
+        if self.tick % 500 == 1 then self:EntityCheck() end 
+
+        if self.tick % 200 == 1 then
+            if not HasStreamedTextureDictLoaded ("commonmenu") then RequestStreamedTextureDict ("commonmenu", true) ; end
+            if not HasStreamedTextureDictLoaded ("timerbars")  then RequestStreamedTextureDict ("timerbars", true)  ; end   
+        end
+		Citizen.Wait(0)
+	end
+end
+
+function JAM_Drugs:GetNearest()
+    local localCoords = GetEntityCoords(PlayerPedId())
+    self.nearest,self.nearestDist,self.nearestCoords = self:FindNearestMarker(localCoords)
+end
 
 -------------------------------------------
 --#######################################--
@@ -8,123 +56,290 @@ function JAM_Drugs:GetSharedObject(obj) self.ESX = obj; ESX = obj; end
 --#######################################--
 -------------------------------------------
 
-function JAM_Drugs:UpdateBlips()
-    if not self or not self.Config or not self.Config.Blips then return; end
+function JAM_Drugs:BlipCheck()
+	if not self or not self.Config or not self.Config.EnableBlips then return; end
+    if self.nearestDist < self.nearest.ViewRadius and not self.nearest.blip then
+		local blip = AddBlipForCoord(self.nearest.ZonePos)
 
+		SetBlipSprite			(blip, self.nearest.BlipSprite)
+		SetBlipColour			(blip, self.nearest.BlipColor)
+		SetBlipDisplay			(blip, self.Config.BlipDisplay)
+		SetBlipScale			(blip, self.Config.BlipScale)
+		SetBlipAsShortRange		(blip, true)
+
+		BeginTextCommandSetBlipName	("STRING")
+		AddTextComponentString		(self.nearest.ZoneTitle)
+		EndTextCommandSetBlipName	(blip)
+
+		self.nearest.blip = blip
+
+	elseif self.nearestDist > self.nearest.ViewRadius and self.nearest.blip then
+		local blip = self.nearest.blip
+		self.nearest.blip = nil
+		RemoveBlip(blip)
+	end
+end
+
+function JAM_Drugs:MarkerCheck()
+    if not self or not self.Config or not self.Config.EnableMarkers then return; end
+    if not self.nearestDist or not self.nearestDist < self.Config.MarkerDrawDist then return; end
+    self:MarkerHandler(self.nearestCoords, self.Config.MarkerScale)
+end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##  Check If Entities Need Spawning  ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:EntityCheck()  
+    if self.nearestDist < self.Config.LoadDist and not self.EntsSpawned then
+        local allPeds = ESX.Game.GetPeds()
+        local sellers = self.nearest.SalesEnt
+
+        local zoneOccupied = false
+        for k = ( self.tick % 3 + 1 ), #allPeds, 3 do
+            local v = allPeds[k]
+            local pedHash = self.GetHashKey(GetEntityModel(v))  
+            for _k,_v in pairs(sellers.Models) do
+                local salesHash = self.GetHashKey(v)
+                if pedHash == salesHash then 
+                    zoneOccupied = true;
+                    return
+                end
+            end
+        end
+
+        if not zoneOccupied and not self.SpawnedPeds then            
+            self:BasicSpawn(self.nearest)
+        end
+
+        if self.nearest.WorkerEnt then workerModels = self.nearest.WorkerEnt; end
+        if self.nearest.GuardEnt then guardModels = self.nearest.GuardEnt; end
+
+    elseif self.nearestDist > (self.Config.LoadDist * 2) and self.SpawnedPeds then 
+        self:DespawnPeds()         
+    end
+end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##  If Zone Unoccupied, Spawn These  ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:BasicSpawn(nearest)
+    self.SpawnedPeds = self.SpawnedPeds or {}
+    if nearest.SalesEnt then self:LoadSalesEnts(nearest); end
+    if nearest.WorkerEnt then self:LoadWorkerEnts(nearest); end
+    if nearest.GuardEnt then self:LoadGuardEnts(nearest); end
+    if nearest.SafePos then self:LoadSafe(nearest); end
+end
+
+function JAM_Drugs:LoadSafe(nearest)
+    self.SpawnedObjs = self.SpawnedeObjs or {}
+    local safePos = nearest.SafePos
+    local safeObj = JSC:SpawnSafeObject(JSC.SafeObjects, safePos, 0.0)
+    for k,v in pairs(safeObj) do table.insert(self.SpawnedObjs, v); end
+end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##     Load Specific Entity Funcs    ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:LoadSalesEnts(nearest)
+    local sellers = nearest.SalesEnt
+    local randModel = self.GetHashKey(sellers.Models[math.random(1, #sellers.Models)])
+    local randPos = sellers.Positions[math.random(1, #sellers.Positions)]
+      
+    local weaponHash = self.GetHashKey('WEAPON_COMBATPISTOL')
+    self:LoadWeapons(self.Config.Weapons.Pistol)
+    self:LoadModels(sellers.Models)  
+
+    local newPed = CreatePed(sellers.Type, randModel, randPos.xyz, randPos.w, true, false)
+    SetPedRelationshipGroupHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
+    SetPedRelationshipGroupDefaultHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
+
+    GiveWeaponToPed(newPed, weaponHash, 1000, false, false)
+
+    self:UnloadModels(sellers.Models)
+    self:UnloadWeapons(self.Config.Weapons.Pistol)
+
+    table.insert(self.SpawnedPeds, newPed)
+end
+
+function JAM_Drugs:LoadWorkerEnts(nearest)
+    local workers = nearest.WorkerEnt
+
+    self:LoadModels(workers.Models)  
+    self:LoadAnim(workers.AnimDict)
+
+    local weaponHash = self.GetHashKey('WEAPON_KNIFE')
+    self:LoadWeapons(self.Config.Weapons.Melee)
+
+    for k,v in pairs(workers.Positions) do
+        local randModel = self.GetHashKey(workers.Models[math.random(1, #workers.Models)])             
+        local newPed = CreatePed(workers.Type, randModel, v.xyz, v.w, true, false)
+        TaskPlayAnim(newPed, workers.AnimDict, workers.AnimName, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)
+
+        SetPedRelationshipGroupHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
+        SetPedRelationshipGroupDefaultHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
+        GiveWeaponToPed(newPed, weaponHash, 1, false, false)
+
+        table.insert(self.SpawnedPeds, newPed)
+    end
+
+    self:UnloadModels(workers.Models)
+    self:UnloadAnim(workers.AnimDict)
+    self:UnloadWeapons(self.Config.Weapons.Melee)
+end
+
+function JAM_Drugs:LoadGuardEnts(nearest)
+    ESX.TriggerServerCallback('JAM_Drugs:GetHeat', function(heat)
+        local guards = nearest.GuardEnt
+        local weapons = self:GetEntWeaponTier(heat)
+
+        for key,val in pairs(weapons) do
+            for k,v in pairs(self.Config.Weapons) do
+                if val == k then self:LoadWeapons(v) end
+            end
+        end
+
+        self:LoadModels(guards.Models)
+        local count = 0
+        if heat > 75 then count = -10; end
+        local attempt = 0
+        local takenpos = {}
+        while count == 0 or count < heat / 20 do
+            local randomPos = guards.Positions[math.random(1, #guards.Positions)] 
+            local posTaken = false
+            for k,v in pairs(takenpos) do 
+                attempt = attempt + 1
+                if v.x == randomPos.x and v.y == randomPos.y and v.z == randomPos.z then 
+                    posTaken = true 
+                end
+            end
+
+            if attempt > count + 1000 then
+                return
+            end
+
+            if not posTaken then
+                count = count + 1
+
+                local randModel = self.GetHashKey(guards.Models[math.random(1, #guards.Models)])
+                local newPed = CreatePed(guards.Type, randModel, randomPos.xyz, randomPos.w, true, false)             
+
+                local weaponCategory = math.random(1, #weapons)
+                local randomWeapon
+                for k,v in pairs(self.Config.Weapons) do
+                    if k == weapons[weaponCategory] then 
+                        randomWeapon = v[math.random(1, #v)]
+                    end 
+                end       
+
+                SetPedRelationshipGroupHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
+                SetPedRelationshipGroupDefaultHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
+
+                GiveWeaponToPed(newPed, randomWeapon, 1000, true, true)
+
+                table.insert(takenpos, randomPos)
+                table.insert(self.SpawnedPeds, newPed)  
+            end
+
+            Citizen.Wait(0)
+        end
+
+        for key,val in pairs(weapons) do
+            for k,v in pairs(self.Config.Weapons) do
+                if val == k then
+                    self:UnloadWeapons(v)
+                end
+            end
+        end
+
+        self:UnloadModels(guards.Models)
+    end) 
+end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##  If Away From Zone, Despawn Peds  ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
+
+function JAM_Drugs:DespawnPeds()
     local playerPos = GetEntityCoords(GetPlayerPed())
-    for key,val in pairs(self.Config.Blips) do
-        local curDist = self:GetVecDist(playerPos, val.Pos)
-        if curDist <= val.Radius and not val.blip then
-            local blip = AddBlipForCoord(val.Pos)
+    for k,v in pairs(self.SpawnedPeds) do
+        SetEntityCoords(v, playerPos.x, playerPos.y, playerPos.z + 50, false, false, false, false)
+        DeletePed(v)
+    end   
 
-            SetBlipSprite               (blip, val.Sprite)
-            SetBlipDisplay              (blip, val.Display)
-            SetBlipScale                (blip, val.Size)
-            SetBlipColour               (blip, val.Color)
-            SetBlipAsShortRange         (blip, true)
-
-            BeginTextCommandSetBlipName ("STRING")
-            AddTextComponentString      (val.Zone)
-            EndTextCommandSetBlipName   (blip)
-
-            val.blip = blip
-
-        elseif curDist > val.Radius and val.blip then
-            local blip = val.blip            
-            val.blip = nil;
-            RemoveBlip(blip);
-        end
+    for k,v in pairs(self.SpawnedObjs) do
+        DeleteObject(v)
     end
+
+    self.SpawnedPeds = false
 end
 
-function JAM_Drugs:UpdateMarkers()
-    if not self or not self.Config or not self.Config.Blips then return; end
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##       Check If Near Markers       ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
 
-    local localCoords = GetEntityCoords(PlayerPedId())
-
-    local nearest,nearestDist,nearestCoords = self:FindNearestMarker(localCoords)
-    if nearestDist < self.Config.MarkerDrawDist then
-        self:MarkerHandler(nearest.Pos, nearest.Scale)
-    end
-end
-
---------------------------------
--- Check Position
---------------------------------
-
-function JAM_Drugs:CheckPosition()
-    if not self or not self.Config or not self.Config.TPMarkers then return; end
-
+function JAM_Drugs:PositionCheck()
+    if not self or not self.Config then return; end
     self.StandingInMarker = self.StandingInMarker or false
+    local inMarker = false  
 
-    local standingInMarker = false
     local localCoords = GetEntityCoords(PlayerPedId())
+    local nearest, nearestDist, nearestCoords = self:FindNearestMarker(localCoords)
 
-    local nearest,nearestDist,nearestCoords = self:FindNearestMarker(localCoords)
+    if nearestDist < self.Config.MarkerScale.x then inMarker = true; end
+    if inMarker and not self.StandingInMarker then
+    	self.StandingInMarker = true
+    	self.ActionData = ActionData or {}
+        for k,v in pairs(nearest) do
+        	if (type(v) == 'vector4' or type(v) == 'vector3') and (v.x == nearestCoords.x) and (v.y == nearestCoords.y) and ( v.z == nearestCoords.z) then
+        		if k == 'ZonePos' then
+		            action,sales,safe,msg = nearest,false,false,"enter the ~y~" .. nearest.ZoneTitle .. "."  
+        		elseif k == 'ExitPos' then
+                    action,sales,safe,msg = nearest,false,false,"leave the ~y~" .. nearest.ZoneTitle .. "."
+        		elseif k == 'ActionPos' then
+                    action,sales,safe,msg = false,nearest,false,(nearest.ActionType:sub(1,1):lower()..nearest.ActionType:sub(2)) .. " ~y~" .. nearest.DrugTitle
+                elseif k == 'SafeActionPos' then
+                    action,sales,safe,msg = false,false,nearest,"~y~attempt ~r~to ~y~crack ~r~ the ~y~safe."
+        		end
 
-    if nearestDist < nearest.Scale.x then
-        standingInMarker = true
-    end
-
-    if standingInMarker and not self.StandingInMarker then
-
-        self.StandingInMarker = true
-        self.ActionData = ActionData or {};
-        if nearest.Zone then
-            self.ActionData.Action = nearest  
-            self.ActionData.BuyZone = false
-            self.ActionData.SalesZone = false     
-            self.ActionData.Message = 'Press ~INPUT_PICKUP~ to access the ' .. nearest.Zone
-        elseif nearest.BuyZone then
-            self.ActionData.Action = false  
-            self.ActionData.BuyZone = nearest 
-            self.ActionData.SalesZone = false    
-            self.ActionData.Message = 'Press ~INPUT_PICKUP~ to purchase ' .. nearest.BuyZone
-        elseif nearest.SalesZone then
-            self.ActionData.Action = false  
-            self.ActionData.BuyZone = false
-            self.ActionData.SalesZone = nearest   
-            self.ActionData.Message = 'Press ~INPUT_PICKUP~ to sell ' .. nearest.SalesZone
+                self.ActionData.Action = action                
+                self.ActionData.SalesZone = sales 
+                self.ActionData.SafeZone = safe
+                self.ActionData.Message = "~y~Press ~INPUT_PICKUP~ ~r~to " .. msg
+        	end
         end
     end
 
-    if not standingInMarker and self.StandingInMarker then
+    if not inMarker and self.StandingInMarker then
         self.StandingInMarker = false
         self.ActionData.Action = false
-        self.ActionData.BuyZone = false
         self.ActionData.SalesZone = false
+        self.ActionData.SafeZone = false
+        TriggerEvent('JAM_SafeCracker:EndMinigame', false, false)
         self.ESX.UI.Menu.CloseAll()
     end
-end
-
-function JAM_Drugs:FindNearestMarker(pos1) 
-    if type(pos1) ~= "vector3" and type(pos1) ~= "table" then 
-        return 999999999 
-    end
-
-    local nearest,nearestDist,nearestCoords 
-
-    for k,v in pairs(self.Config.TPMarkers) do 
-        local curDist = self:GetVecDist(pos1, v.Pos)
-        local curDistExit = self:GetVecDist(pos1, v.PosExit)
-
-        if not nearestDist or nearestDist > curDist then
-            nearest,nearestDist,nearestCoords = v,curDist,v.Pos 
-        end
-
-        if not nearestDist or nearestDist > curDistExit then 
-            nearest,nearestDist,nearestCoords = v,curDistExit,v.PosExit
-        end
-    end
-
-    for k,v in pairs(self.Config.ActionMarkers) do
-        local curDist = self:GetVecDist(pos1, v.Pos)
-        if not nearestDist or nearestDist > curDist then
-            nearest,nearestDist,nearestCoords = v,curDist,v.Pos 
-        end
-    end
-
-    return nearest,nearestDist,nearestCoords 
 end
 
 -- -----------------------------------------
@@ -135,33 +350,35 @@ end
 -- #######################################--
 -- -----------------------------------------
 
-function JAM_Drugs:CheckInput()
+function JAM_Drugs:InputCheck()
     if not self or not self.ActionData then return; end
-
+    if not self.ActionData.Action and not self.ActionData.SalesZone and not self.ActionData.SafeZone then return; end
     self.Timer = self.Timer or 0
 
-    if self.ActionData.Action or self.ActionData.BuyZone or self.ActionData.SalesZone then
-        SetTextComponentFormat('STRING') 
-        AddTextComponentString(self.ActionData.Message)
-        DisplayHelpTextFromStringLabel(0, 0, 1, -1)
+    SetTextComponentFormat('STRING') 
+    AddTextComponentString(self.ActionData.Message)
+    DisplayHelpTextFromStringLabel(0, 0, 1, -1)
 
-        if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
-            if self.ActionData.Action then
-                self:MarkerTeleport(self.ActionData.Action)
-            elseif self.ActionData.BuyZone then
-                self:OpenBuyMenu(self.ActionData.BuyZone)
-            elseif self.ActionData.SalesZone then
-                self:OpenSellMenu(self.ActionData.SalesZone)
+    if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
+        if self.ActionData.Action then
+            self:MarkerTeleport(self.ActionData.Action)
+        elseif self.ActionData.SalesZone then
+            self:SalesMenu(self.ActionData.SalesZone)
+        elseif self.ActionData.SafeZone then
+            TriggerEvent('JAM_SafeCracker:StartMinigame', self.ActionData.SafeZone.SafeRewards)
+            local playerPed = PlayerPedId()
+            for k,v in pairs(self.SpawnedPeds) do
+                if not IsPedInCombat(v, playerPed) then
+                    TaskCombatPed(v, playerPed, 0, 16)
+                end
             end
-
-            self.ActionData.Action = false
-            self.ActionData.BuyZone = false
-            self.ActionData.SalesZone = false
-            self.StandingInMarker = false
-            self.Timer = GetGameTimer()            
         end
+
+        self.StandingInMarker = false
+        self.Timer = GetGameTimer()            
     end
 end
+
 
 -------------------------------------------
 --#######################################--
@@ -173,16 +390,11 @@ end
 
 function JAM_Drugs:MarkerTeleport(zone)
     local ped = PlayerPedId()
-    local localCoords = GetEntityCoords(ped)
-    local nearest,nearestDist,nearestCoords = self:FindNearestMarker(localCoords)
-
-    for k,v in pairs(self.Config.TPMarkers) do
-        if(v.Pos.x == nearestCoords.x) and (v.Pos.y == nearestCoords.y) and (v.Pos.z == nearestCoords.z)then
-            SetEntityCoords(ped, zone.PosExit.x, zone.PosExit.y, zone.PosExit.z, zone.HeadingExit, false, false, false)
-            for key,val in pairs(self.Config.Entities) do          
-            end
-        elseif(v.PosExit.x == nearestCoords.x) and (v.PosExit.y == nearestCoords.y) and (v.PosExit.z == nearestCoords.z) then
-            SetEntityCoords(ped, zone.Pos.x, zone.Pos.y, zone.Pos.z, zone.Heading, false, false, false)    
+    for k,v in pairs(self.Config.Zones) do
+        if (v.ZonePos.x == self.nearestCoords.x) and (v.ZonePos.y == self.nearestCoords.y) and (v.ZonePos.z == self.nearestCoords.z) then
+            SetEntityCoords(ped, v.ExitPos, v.ExitHeading, false, false, false)
+        elseif(v.ExitPos.x == self.nearestCoords.x) and (v.ExitPos.y == self.nearestCoords.y) and (v.ExitPos.z == self.nearestCoords.z) then
+            SetEntityCoords(ped, v.ZonePos, v.ZoneHeading, false, false, false)    
         end
     end
 end
@@ -190,98 +402,64 @@ end
 --------------------------------------------
 --########################################--
 --##                                    ##--
---##  Inside Action Marker Trade Menus  ##--
+--##  Inside Action Marker Trade Menu   ##--
 --##                                    ##--
 --########################################--
 --------------------------------------------
 
-function JAM_Drugs:OpenBuyMenu(zone)
-    if not self or not self.ESX then return; end
+function JAM_Drugs:SalesMenu(zone)
+    if not self or not zone or not self.ESX then return; end
+    local drugTitle = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
+    local actionType = zone.ActionType:sub(1,1):lower()..zone.ActionType:sub(2)
 
     self.ESX.UI.Menu.CloseAll()
+    ESX.TriggerServerCallback('JAM_Drugs:GetDrugCount', function(userDrugAmount)
+        local maxAmount 
+        local salesData
+        local profitMargin
 
-    local elements = {}
-    local buyzone = zone.BuyZone
-    local buyprice = zone.Price
-    table.insert(elements,{label = "Purchase : " .. buyzone .. " : $" .. (buyprice) .. " +/- 20%", value = buyzone .. "_List"})
-
-    self.ESX.UI.Menu.Open(
-        'default', GetCurrentResourceName(), buyzone .. "_Menu",
-        {
-            title = buyzone,
-            align = 'top-left',
-            elements = elements,
-        },
-
-        function(data, menu)
-            menu.close()
-
-            self.keyboardActive = true
-            DisplayOnscreenKeyboard( 0,"","", amount, "", "", "", 30 )
-
-            while self.keyboardActive do
-                if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
-                    self.keyboardActive = false
-                    self.keyboardResult = GetOnscreenKeyboardResult()
-                    local num = tonumber(self.keyboardResult)
-                    if num ~= nil then 
-                        self:PurchaseDrugs(zone, num)
-                    else 
-                        TriggerEvent('esx:showNotification', "Enter a number.")
-                    end
-                end
-            Citizen.Wait(0)
+        if zone.ZoneLimit then 
+            maxAmount = zone.ZoneLimit 
+            profitMargin = zone.ZonePrice / self.Config.SalesProfit
+            if userDrugAmount and userDrugAmount > 0 then 
+                maxAmount = maxAmount - userDrugAmount
             end
-        end,
-        function(data, menu)
-            menu.close()
         end
-    )
-end
 
-function JAM_Drugs:OpenSellMenu(zone)
-    if not self or not self.ESX then return; end
+        if maxAmount and maxAmount > 0 then salesData = "Clean: ~y~$" .. (zone.ZonePrice + profitMargin) .. "~r~ / Dirty: ~y~$" .. (zone.ZonePrice - profitMargin)
+        else salesData = "Dirty: ~y~$" .. zone.ZonePrice; end
 
-    self.ESX.UI.Menu.CloseAll()
+        local c = self.drawTextTemplate()
+        c.font = 4
+        c.x = 0.5
+        c.y = 0.36
+        c.text = "~r~How much ~y~" .. drugTitle .. " ~r~do you want to ~y~" .. actionType .. "~r~? ( " .. salesData .."~r~ )"
 
-    local elements = {}
-    local SalesZone = zone.SalesZone
-    local sellprice = zone.Price
-    table.insert(elements,{label = "Sell : " .. SalesZone .. " : $" .. sellprice, value = SalesZone .. "_List"})
+        self.keyboardActive = true
 
-    self.ESX.UI.Menu.Open(
-        'default', GetCurrentResourceName(), SalesZone .. "_Menu",
-        {
-            title = SalesZone,
-            align = 'top-left',
-            elements = elements,
-        },
+        DisplayOnscreenKeyboard( 0, "","", (maxAmount or userDrugAmount), "", "", "", 30 )
+   
+        while self.keyboardActive do    
+            self.drawText(c)
+            DrawSprite("commonmenu", "gradient_nav", 0.5, 0.375, 0.32, 0.047, 0.0, 0, 0, 0, 210)
 
-        function(data, menu)
-            menu.close()
-
-            self.keyboardActive = true
-            DisplayOnscreenKeyboard( 0,"","", amount, "", "", "", 30 )
-
-            while self.keyboardActive do
             if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
                 self.keyboardActive = false
                 self.keyboardResult = GetOnscreenKeyboardResult()
                 local num = tonumber(self.keyboardResult)
-                if num ~= nil then 
-                    self:SellDrugs(zone, num)
+                if num ~= nil and num > 0 then
+                    if maxAmount then self:PurchaseDrugs(zone, num)
+                    else self:SellDrugs(zone, num)
+                    end
                 else 
-                    TriggerEvent('esx:showNotification', "Enter a number.")
+                    TriggerEvent('esx:showNotification', "~r~Enter a number next time.")
                 end
-            end
+            elseif self.keyboardActive and UpdateOnscreenKeyboard() ~= 0 then
+                self.keyboardActive = false
+            end            
             Citizen.Wait(0)
-            end
-  
-        end,
-        function(data, menu)
-            menu.close()
         end
-    )
+    end, drugTitle) 
 end
 
 -------------------------------------------
@@ -293,29 +471,29 @@ end
 -------------------------------------------
 
 function JAM_Drugs:PurchaseDrugs(zone, amount)
-    local str = (zone.BuyZone:sub(1,1):lower()..zone.BuyZone:sub(2))
+    local str = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
 
     ESX.TriggerServerCallback('JAM_Drugs:PurchaseDrug', function(valid, msg, finalprice)           
         if valid then    
-            TriggerEvent('esx:showNotification', "You purchased " .. amount .. " " .. str .. " for $" .. math.floor(finalprice) .. msg)
-            self:HandleSnitching(zone)      
+            TriggerEvent('esx:showNotification', "~r~You purchased~y~ " .. amount .. " " .. str .. "~r~ for ~y~$" .. math.floor(finalprice) .. "~r~" ..msg)
+            --self:HandleSnitching(zone)      
         else 
-            TriggerEvent('esx:showNotification', "You can't purchase that much " .. str .. ".")
+            TriggerEvent('esx:showNotification', "~r~You can only carry ~y~" .. zone.ZoneLimit .. " " .. str .. "~r~ at a time.")
         end
-    end, str, zone.Price, amount)  
+    end, str, zone.ZonePrice, amount)  
 end
 
 function JAM_Drugs:SellDrugs(zone, amount)  
-    local str = (zone.SalesZone:sub(1,1):lower()..zone.SalesZone:sub(2))
+    local str = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
 
     ESX.TriggerServerCallback('JAM_Drugs:SellDrug', function (valid)
         if not valid then
-            TriggerEvent('esx:showNotification', "You don't have enough " .. str .. " to sell.")
+            TriggerEvent('esx:showNotification', "~r~You don't have enough ~y~" .. str .. " ~r~to sell.")
         else
-            TriggerEvent('esx:showNotification', "You sold " .. amount .. " " .. str .. " for $" .. math.floor(zone.Price * amount) .. " dirty money.")
-            self:HandleRobbing(zone)
+            TriggerEvent('esx:showNotification', "~r~You sold ~y~" .. amount .. " " .. str .. " ~r~for ~y~$" .. math.floor(zone.ZonePrice * amount) .. " ~r~dirty money.")
+            --self:HandleRobbing(zone)
         end
-    end, str, zone.Price, amount)  
+    end, str, zone.ZonePrice, amount)  
 end
 
 -------------------------------------------
@@ -370,13 +548,21 @@ function JAM_Drugs:HandleRobbing(zone)
             self:FreeModels(zone.Robbers)
 
             Citizen.Wait(60000)
-
+            self.BeingRobbed = false 
             for k,v in pairs(zone.Robbers) do
                 SetPedAsNoLongerNeeded(v.ped)
             end
         end
     end
 end
+
+-------------------------------------------
+--#######################################--
+--##                                   ##--
+--##            Death Checks           ##--
+--##                                   ##--
+--#######################################--
+-------------------------------------------
 
 function JAM_Drugs:DeathCheck()
     local plyped = GetPlayerPed()
@@ -391,163 +577,22 @@ function JAM_Drugs:DeathCheck()
     end
 end
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##          Entity Handling          ##--
---##                                   ##--
---#######################################--
--------------------------------------------
+AddEventHandler('esx:onPlayerDeath', function(data)
+	if not JAM_Drugs then return; end
+	if JAM_Drugs.BeingRobbed then 
+		JAM_Drugs.BeingRobbed = false; 
 
-function JAM_Drugs:SpawnHandler()  
-    for _k,_v in pairs(self.Config.Entities) do
-        self:RequestModels( _v )  
-        self:SpawnEntities( _v )
-        self:FreeModels( _v )
-    end
-end
-
-function JAM_Drugs:SpawnEntities(table)
-    if type(table) ~= 'table' then return; end
-    for k,v in pairs(table) do            
-        local newPed = CreatePed(v.Type, v.ModelHash, v.Pos, v.Heading, false, false) 
-
-        SetEntityInvincible(newPed, v.Invincible)
-        FreezeEntityPosition(newPed, v.FreezeEnt)
-        SetBlockingOfNonTemporaryEvents(newPed, v.BlockEvents)
-
-        if v.AnimDict then
-            TaskPlayAnim(newPed, v.AnimDict, v.AnimName, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)      
-        end
-
-        if v.WeaponModel then
-            RemoveAllPedWeapons(newPed, true)
-            GiveWeaponToPed(newPed, v.WeaponModel, 1000, true, true)
-            SetCurrentPedWeapon(newPed, v.WeaponModel, true)
-            SetPedCurrentWeaponVisible(newPed, true, true, true, true)
-            SetPedRelationshipGroupHash(newPed, v.RelHash)
-        end
-
-        if v.BoneIndex then
-            local joint = GetPedBoneIndex(newPed, v.BoneIndex)
-            local obj = CreateObject(v.AttachedModel, v.Pos, v.Heading, false, false, false)
-            AttachEntityToEntity(obj, newPed, joint, v.Offset, v.Rot, false, false, false, false, 0, false)
-        end
-    end
-end
+		if not self.playerData then self.playerData = ESX.GetPlayerData(); end
+		TriggerServerEvent('JAM_Drugs:GetRobbed', self.playerData)
+	end
+end)
 
 -------------------------------------------
 --#######################################--
 --##                                   ##--
---##       Load & Unload Models        ##--
+--##           Start 'Er Up            ##--
 --##                                   ##--
 --#######################################--
 -------------------------------------------
 
-function JAM_Drugs:RequestModels(table)
-    if type(table) ~= 'table' then return; end
-    for k,v in pairs(table) do
-        if not HasModelLoaded(v.ModelHash) then
-            while not HasModelLoaded(v.ModelHash) do
-                RequestModel(v.ModelHash)
-                Citizen.Wait(0)
-            end
-        end    
-
-        if v.BoneIndex and not HasModelLoaded(v.AttachedModel) then
-            while not HasModelLoaded(v.AttachedModel) do
-                RequestModel(v.AttachedModel)
-                Citizen.Wait(0)
-            end
-        end        
-
-        if v.WeaponModel and not HasWeaponAssetLoaded(v.WeaponModel) then
-            while not HasWeaponAssetLoaded(v.WeaponModel) do
-                RequestWeaponAsset(v.WeaponModel, 31, 0)
-                Citizen.Wait(0)
-            end
-        end
-
-        self:RequestAnimations(v)
-    end
-end
-
-function JAM_Drugs:RequestAnimations(table)
-    if table.AnimDict and not HasAnimDictLoaded(table.AnimDict) then
-        while not HasAnimDictLoaded(table.AnimDict) do
-            RequestAnimDict(table.AnimDict)
-            Citizen.Wait(0)
-        end
-    end 
-end
-
-function JAM_Drugs:FreeModels(table)
-    if type(table) ~= 'table' then return; end
-    for k,v in pairs(table) do            
-        SetModelAsNoLongerNeeded(v.ModelHash)
-        if v.AnimDict then RemoveAnimDict(v.AnimDict); end
-        if v.BoneIndex then SetModelAsNoLongerNeeded(v.AttachedModel); end
-        if v.WeaponModel then SetModelAsNoLongerNeeded(v.WeaponModel); end
-    end
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##      Utils Funcs & Commands       ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:GetVecDist(v1,v2)
-  if not v1 or not v2 or not v1.x or not v2.x then return 0 ; end
-  return math.sqrt(  ( (v1.x or 0) - (v2.x or 0) )*(  (v1.x or 0) - (v2.x or 0) )+( (v1.y or 0) - (v2.y or 0) )*( (v1.y or 0) - (v2.y or 0) )+( (v1.z or 0) - (v2.z or 0) )*( (v1.z or 0) - (v2.z or 0) )  )
-end
-
-function JAM_Drugs:GetXYDist(x1,y1,z1,x2,y2,z2)
-  return math.sqrt(  ( (x1 or 0) - (x2 or 0) )*(  (x1 or 0) - (x2 or 0) )+( (y1 or 0) - (y2 or 0) )*( (y1 or 0) - (y2 or 0) )+( (z1 or 0) - (z2 or 0) )*( (z1 or 0) - (z2 or 0) )  )
-end
-
-function JAM_Drugs:MarkerHandler(pos, scale)
-    --      Type,  posX,  posY,  posZ,    dirX, dirY, dirZ,    rotX, rotY, rotZ,    scaleX,  scaleY,  scaleZ,    colorR, colorG, colorB,    alpha,     bob,    facecam,   p19,    rotate,    textureDict,    textureName,    drawOnEnts   
-    DrawMarker(1, pos.x, pos.y, pos.z,     0.0,  0.0,  0.0,     0.0,  0.0,  0.0,   scale.x, scale.y, scale.z,       255,    255,    255,        0,   false,      false,     2,     false,          false,          false,        false)
-end
-
-RegisterCommand('hk', function(source, args)
-    local var = ''
-    for i = 1,#args do
-        var = var .. " " .. args[i]
-    end
-    print(GetHashKey(var))
-end, false)
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##           Update Thread           ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:Update()
-    Citizen.Wait(1000)
-    TriggerEvent('esx:getSharedObject', function(...) self:GetSharedObject(...); end);
-    Citizen.Wait(1000)
-    TriggerServerEvent('JAM_Drugs:Startup')
-    Citizen.Wait(1000)
-    self:SpawnHandler()
-
-    local ped = PlayerPedId()
-    while true do
-        self.tick = ( self.tick or 0 ) + 1
-
-        self:UpdateBlips()
-        self:UpdateMarkers()  
-        self:CheckPosition()
-        self:CheckInput()
-        self:DeathCheck()
-        Citizen.Wait(0)
-    end
-end
-
-Citizen.CreateThread(function(...) JAM_Drugs:Update(...); end)
+Citizen.CreateThread(function(...) JAM_Drugs:ClientStart(...); end)
