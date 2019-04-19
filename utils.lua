@@ -76,7 +76,7 @@ end
 
 
 function JAM_Drugs:FindNearestMarker(pos) 
-	if not self or not self.Config then return; end
+  if not self or not self.Config then return; end
     if type(pos) ~= "vector3" and type(pos) ~= "table" then 
         return 999999999 
     end
@@ -84,24 +84,29 @@ function JAM_Drugs:FindNearestMarker(pos)
     local nearest,nearestDist,nearestCoords 
 
     for k,v in pairs(self.Config.Zones) do 
-        if v.ZonePos ~= nil then print(v.ZonePos) ;distZone = self:GetVecDist(pos, v.ZonePos.xyz); end
+      local distZone = nil
+      local distExit = nil
+      local distAction = nil
+      local distSafe = nil
+      
+        if v.ZonePos ~= nil then distZone = self:GetVecDist(pos, v.ZonePos.xyz); end
         if v.ExitPos ~= nil then distExit = self:GetVecDist(pos, v.ExitPos.xyz); end
         if v.ActionPos ~= nil then distAction = self:GetVecDist(pos, v.ActionPos); end
         if v.SafeActionPos ~= nil then distSafe = self:GetVecDist(pos, v.SafeActionPos); end
 
-        if distZone and (not nearestDist or nearestDist > distZone) then
+        if distZone ~= nil and (not nearestDist or nearestDist > distZone) then
             nearest,nearestDist,nearestCoords = v,distZone,v.ZonePos.xyz 
         end
 
-        if distExit and (not nearestDist or nearestDist > distExit) then
+        if distExit ~= nil and (not nearestDist or nearestDist > distExit) then
             nearest,nearestDist,nearestCoords = v,distExit,v.ExitPos.xyz
         end
 
-        if distAction and (not nearestDist or nearestDist > distAction) then
+        if distAction ~= nil and (not nearestDist or nearestDist > distAction) then
             nearest,nearestDist,nearestCoords = v,distAction,v.ActionPos
         end
 
-        if distSafe and (not nearestDist or nearestDist > distSafe) then
+        if distSafe ~= nil and (not nearestDist or nearestDist > distSafe) then
             nearest,nearestDist,nearestCoords = v,distSafe,v.SafeActionPos
         end
     end

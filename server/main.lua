@@ -17,19 +17,45 @@ ESX.RegisterServerCallback('JAM_Drugs:PurchaseDrug', function(source, cb, drug, 
 	if not drugInventory or (drugInventory.count + amount) <= drugInventory.limit then	
 		if dirtyMoney >= (finalVal * 0.8) then
 			finalVal = finalVal * 0.8			
-			hasEnough = true
+			hasEnough = 1
 			msg = ' dirty money.'	
 			xPlayer.removeAccountMoney('black_money', finalVal)
 			xPlayer.addInventoryItem(drugs, amount)	
 		elseif cleanMoney >= (finalVal * 1.2) then
 			finalVal = finalVal * 1.2			
-			hasEnough = true
+			hasEnough = 1
 			msg = ' clean money.'
 			xPlayer.removeMoney(finalVal)	
 			xPlayer.addInventoryItem(drugs, amount)
-		end		
+		end	
+	else hasEnough = 2	
 	end
 	cb(hasEnough, msg, finalVal)
+end)
+
+AddEventHandler('playerDropped', function(reason)
+	local source = source
+	local xPlayer = ESX.GetPlayerFromId(source)
+	if not xPlayer then return; end
+	local lastPos = xPlayer.getLastPosition()
+	local nearest,nearestDist,nearestCoords = JAM_Drugs:FindNearestMarker(lastPos)
+	if nearestDist < JAM_Drugs.Config.LoadDist then 
+		TriggerEvent('JAM_Drugs:SetZonePlayers', nearest.ZoneTitle, -1)
+		TriggerEvent('JAM_Drugs:SetSafeLocked', nearest.ZoneTitle, false)
+	end	
+end)
+
+AddEventHandler('onMySQLReady', function(...)
+	for k,v in pairs(JAM_Drugs.Config.Zones) do
+		TriggerEvent('JAM_Drugs:SetZonePlayers', v.ZoneTitle, 0)
+		TriggerEvent('JAM_Drugs:SetSafeLocked', v.ZoneTitle, false)
+	end
+end)
+
+ESX.RegisterServerCallback('JAM_Drugs:GetConfig', function(source, cb)
+	if not JAM_Drugs then return; end
+	print(JAM_Drugs.Config, JAM_Drugs.Config.Zones)
+	cb(JAM_Drugs.Config)
 end)
 
 ESX.RegisterServerCallback('JAM_Drugs:GetDrugCount', function(source, cb, drug) 
@@ -39,6 +65,37 @@ ESX.RegisterServerCallback('JAM_Drugs:GetDrugCount', function(source, cb, drug)
 	local jamdrug = 'jam' .. drug
 	local count = xPlayer.getInventoryItem(jamdrug).count
 	cb(count)
+end)
+
+ESX.RegisterServerCallback('JAM_Drugs:CheckZonePlayers', function(source, cb, zone) 
+	local returnData = false
+	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})	
+	if data[1] and data[1].players ~= nil then returnData = data[1].players; end
+	cb(returnData)
+end)
+
+RegisterNetEvent('JAM_Drugs:SetZonePlayers')
+AddEventHandler('JAM_Drugs:SetZonePlayers', function(zone, val)
+	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})	
+	if val ~= 0 then playerCount = data[1].players + val
+	else playerCount = val; end
+	if playerCount < 0 then playerCount = 0; end
+	MySQL.Sync.execute("UPDATE jam_drugzones SET players=@playercount WHERE zone=@zone",{['@playercount'] = playerCount, ['@zone'] = zone})	
+end)
+
+ESX.RegisterServerCallback('JAM_Drugs:CheckSafeLocked', function(source, cb, zone) 
+	local returnData = false
+	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})		
+	if data[1] and data[1].safelockout ~= nil then returnData = data[1].safelockout; end
+	cb(returnData)
+end)
+
+RegisterNetEvent('JAM_Drugs:SetSafeLocked')
+AddEventHandler('JAM_Drugs:SetSafeLocked', function(zone, locked) 
+	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})		
+	if zone ~= nil and locked ~= nil and data[1] then
+		MySQL.Sync.execute("UPDATE jam_drugzones SET safelockout=@safelockout WHERE zone=@zone",{['@safelockout'] = locked, ['@zone'] = zone})	
+	end
 end)
 
 ESX.RegisterServerCallback('JAM_Drugs:SellDrug', function(source, cb, drug, price, amount)
@@ -109,4 +166,4 @@ function JAM_Drugs.Robbed(source)
 end
 
 RegisterNetEvent('JAM_Drugs:GetRobbed')
-AddEventHandler('JAM_Drugs:GetRobbed', JAM_Drugs.Robbed)
+AddEventHandler('JAM_Drugs:GetRobbed', function() JAM_Drugs.Robbed(source); end)

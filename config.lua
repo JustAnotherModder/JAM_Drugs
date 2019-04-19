@@ -37,7 +37,7 @@ JAM_Drugs = {
 				ActionType		= "Buy",
 				ZonePrice		= 1000,
 				ZoneLimit 		= 100,
-				ViewRadius 		= 250,
+				ViewRadius 		= 150,
 				BlipSprite 		= 497,
 				BlipColor 		= 4,
 				ZoneHeading		= 300.0,
@@ -74,13 +74,13 @@ JAM_Drugs = {
 				},
 				
 				SalesEnt = {
-					Type = 5,						
+					Type = 4,						
 					Models = { 'g_f_y_ballas_01', },
 					Positions = { vector4( 1088.92, -3194.42, -40.0, 0.0 ) },
 				},					
 
 				WorkerEnt = {						
-					Type = 5,
+					Type = 4,
 					Models = { 'mp_f_cocaine_01' },
 
 					Positions = { 	
@@ -115,7 +115,7 @@ JAM_Drugs = {
 				ActionType		= "Sell",
 				ZonePrice		= 1000,
 
-				ViewRadius 		= 150,
+				ViewRadius 		= 50,
 				BlipSprite 		= 226,
 				BlipColor 		= 4,
 				ZoneHeading		= 51.31,
@@ -150,19 +150,128 @@ JAM_Drugs = {
 						vector4( 1114.83, -3159.26, -38.00, 342.45 ),
 						vector4( 1113.37, -3147.71, -38.00, 285.30 ),
 						vector4( 1113.90, -3143.27, -38.00, 225.45 ),
+						vector4( 1087.02, -3187.76, -38.00, 213.30 ),
+						vector4( 1090.29, -3187.93, -38.00, 153.45 ),
 					},					
+				},
+			},
+
+			MethLab = {
+				ZoneTitle 		= "Meth Lab",
+				DrugTitle	 	= "Meth",
+				ActionType		= "Buy",
+				ZonePrice		= 800,
+				ZoneLimit 		= 100,
+				ViewRadius 		= 300,
+				BlipSprite 		= 499,
+				BlipColor 		= 74,
+				ZoneHeading		= 210.00,
+				ExitHeading		= 277.70,
+				ZonePos 		= vector3( 201.85, 2462.02, 54.50 ),
+				ExitPos 		= vector3( 997.00, -3200.71, -37.50 ),
+				ActionPos	 	= vector3( 1002.16, -3195.85, -40.0 ),
+
+				SafePos				= vector3( 1012.10, -3194.40, -39.1 ),
+				SafeActionPos		= vector3( 1012.15, -3195.35, -40.0 ),
+
+				SafeRewards			= { 
+					WeaponAmount = 1,
+					DrugsAmount = 75,
+					CashAmount = 7500,
+
+					Items = { 'jammeth', 'jamcocaine' },	
+					
+					Weapons = { 
+					"WEAPON_HEAVYPISTOL", "WEAPON_PISTOL50", "WEAPON_SMG", "WEAPON_ASSAULTSMG", "WEAPON_REVOLVER", 
+					"WEAPON_PUMPSHOTGUN", "WEAPON_ASSAULTRIFLE", "WEAPON_SMG", "WEAPON_REVOLVER", "WEAPON_COMBATMG", 
+					"WEAPON_COMPACTRIFLE", "WEAPON_ASSAULTSHOTGUN", "WEAPON_SPECIALCARBINE", "WEAPON_ADVANCEDRIFLE",
+					"WEAPON_SAWNOFFSHOTGUN", "WEAPON_HEAVYSHOTGUN", "WEAPON_MG",
+					},				
+				},
+
+				-- Entities for this zone.
+				EntSettings = {
+					-- Preset settings for these entities.
+					Invincible = false,
+					FreezeEnt = false,
+					BlockEvents = false,
+					Relationship = "AMBIENT_GANG_LOST",
+				},
+				
+				SalesEnt = {
+					Type = 27,
+					Models = { 'g_f_y_lost_01', 'u_f_y_bikerchic', },
+					Positions = { vector4( 1003.85, -3195.75, -40.0, 90.0 ), },
+				},
+
+				WorkerEnt = {						
+					Type = 27,
+					Models = { 'mp_f_meth_01', "mp_m_meth_01" },
+					AnimDict = 'anim@amb@business@meth@meth_monitoring_cooking@cooking@',	
+
+					Positions = { 	
+						["base_idle_tank_cooker"] = vector4( 1005.80, -3200.38, -39.40, 175.0 ),
+						["base_idle_tank_penci"] = vector4( 1009.80, -3196.78, -40.0, 165.0 ),
+					},
+				},
+
+				GuardEnt = {						
+					Type = 27,
+					Models = { 'g_m_y_lost_01', 'g_m_y_lost_02', 'g_m_y_lost_03', },
+
+					Positions = { 	
+						vector4( 1016.48, -3195.81, -40.0, 120.0 ),						
+						vector4( 1016.48, -3200.81, -40.0, 48.0 ),
+						vector4( 1011.52, -3201.99, -40.0, 3.50 ),
+						vector4( 1013.91, -3197.39, -40.0, 351.51 ),
+						vector4( 1003.84, -3200.63, -40.0, 18.51 ),
+						vector4( 1000.53, -3198.35, -40.0, 315.51 ),
+						vector4( 1008.47, -3199.23, -40.0, 159.50 ),
+						vector4( 997.14, -3201.96, -37.25, 339.50 ),
+					},					
+				},
+			},
+
+			MethSales = {
+				ZoneTitle 		= "Meth Sales",
+				DrugTitle	 	= "Meth",
+				ActionType		= "Sell",
+				ZonePrice		= 800,
+				ViewRadius 		= 150,
+				BlipSprite 		= 499,
+				BlipColor 		= 74,
+				ActionPos	 	= vector3( 302.92, -1959.95, 22.89 ),
+
+				EntSettings = {
+					Invincible = false,
+					FreezeEnt = false,
+					BlockEvents = false,
+					Relationship = "AMBIENT_GANG_MEXICAN",
+				},
+
+				SalesEnt = {
+					Type = 4,
+					FreezeEnt = true,
+					Models = { 'g_m_y_mexgoon_03', 'ig_ramp_mex', 'g_m_y_mexgoon_02', 'a_m_y_mexthug_01','g_m_y_mexgoon_01', },
+					Positions = { vector4( 303.46, -1960.46, 22.89, 46.70 ), },
 				},
 
 				RobberEnt = {
 					Type = 4,
-					Models = { 'g_m_y_lost_01', 'g_m_y_lost_02', 'g_m_y_lost_03', },
+					Models = { 'g_m_y_mexgoon_03', 'ig_ramp_mex', 'g_m_y_mexgoon_02', 'a_m_y_mexthug_01','g_m_y_mexgoon_01', },
 
 					Positions = {
-						vector4( 379.36, -2008.29, 23.79, 83.40 ),				
+						vector4( 293.14, -1953.2, 23.18, 231.37 ),		
+						vector4( 294.31, -1951.12, 23.18, 222.37 ),				
+						vector4( 292.7, -1946.33, 23.18, 222.37 ),			
+						vector4( 299.14, -1940.43, 23.43, 144.36 ),	
+						vector4( 306.42, -1968.15, 21.47, 51.36 ),
+						vector4( 291.55, -1957.99, 22.54, 282.36 ),	
 					},
 				},
 			},
 		},
+
 		-- Weapons list (for entities).
 		Weapons = {
 			Melee = { 
