@@ -3,6 +3,7 @@ JAM_Drugs = {
 	Config = {
 		-- Profit (or loss from clean money) for drug sales.
 		SalesProfit 	= 10, -- %
+		NPCSalesProfit  = 20, -- %
 
 		-- Edit drug prices and limits here (and nowhere else).
 		MethPrice		= 700,
@@ -14,9 +15,12 @@ JAM_Drugs = {
 		RobberyChance 	= 50, -- % chance of robbery.
 		RobberAmount 	= 10, -- % of items taken from players inventory.
 		SnitchingChance = 50, -- % chance of player being ratted to police.	
+		NPCSalesChance  = 100, -- % chance of being able to sell to random npc
 
 		-- Distance to load areas from.
 		LoadDist 		= 100,
+		NPCSalesDist	= 5,
+		NPCSalesMax 	= 3,
 
 		-- Universal blip and marker settings.
 		EnableBlips 	= true,
@@ -305,18 +309,24 @@ JAM_Drugs = {
 			Cocaine = {
 				Name 		= 'jamcocaine',
 				Label 		= 'Cocaine',
-				Limit 		= CokeLimit,
+				Limit 		= 100,
 				Rare 		= 0,
 				CanRemove 	= 1,
+
+				Value 		= 1000,
 			},
 			Meth = {
 				Name 		= 'jammeth',
 				Label 		= 'Meth',
-				Limit 		= MethLimit,
+				Limit 		= 100,
 				Rare 		= 0,
 				CanRemove 	= 1,
+
+				Value 		= 700,
 			},
 		},
+
+
 		-- Key codes.
 		Keys = {
 		    ["ESC"] 		= 322, 	["F1"] 			= 288, 	["F2"] 			= 289, 	["F3"] 			= 170, 	["F5"] 	= 166, 	["F6"] 	= 167, 	["F7"] 	= 168, 	["F8"] 	= 169, 	["F9"] 	= 56, 	["F10"] 	= 57, 

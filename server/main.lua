@@ -6,23 +6,24 @@ ESX.RegisterServerCallback('JAM_Drugs:PurchaseDrug', function(source, cb, drug, 
 
 	local hasEnough = false
 	local msg = ''
-	local finalVal = math.floor(price * amount)
+	local finalVal
 
 	local playerId = xPlayer.getIdentifier()	
 	local cleanMoney = xPlayer.getMoney()
 	local dirtyMoney = xPlayer.getAccount('black_money').money
 	local drugs = 'jam' .. drug
 	local drugInventory = xPlayer.getInventoryItem(drugs)
+	local profitMargin = (price * JAM_Drugs.Config.SalesProfit) / 100
 
 	if not drugInventory or (drugInventory.count + amount) <= drugInventory.limit then	
-		if dirtyMoney >= (finalVal * 0.8) then
-			finalVal = finalVal * 0.8			
+		if dirtyMoney >= (price - profitMargin) * amount then
+			finalVal = (price - profitMargin) * amount		
 			hasEnough = 1
 			msg = ' dirty money.'	
 			xPlayer.removeAccountMoney('black_money', finalVal)
 			xPlayer.addInventoryItem(drugs, amount)	
-		elseif cleanMoney >= (finalVal * 1.2) then
-			finalVal = finalVal * 1.2			
+		elseif cleanMoney >= (price + profitMargin) * amount then
+			finalVal = (price + profitMargin) * amount		
 			hasEnough = 1
 			msg = ' clean money.'
 			xPlayer.removeMoney(finalVal)	
@@ -39,6 +40,7 @@ AddEventHandler('playerDropped', function(reason)
 	if not xPlayer then return; end
 	local lastPos = xPlayer.getLastPosition()
 	local nearest,nearestDist,nearestCoords = JAM_Drugs:FindNearestMarker(lastPos)
+	if not nearest or not JAM_Drugs or not JAM_Drugs.Config then return; end
 	if nearestDist < JAM_Drugs.Config.LoadDist then 
 		TriggerEvent('JAM_Drugs:SetZonePlayers', nearest.ZoneTitle, -1)
 		TriggerEvent('JAM_Drugs:SetSafeLocked', nearest.ZoneTitle, false)
@@ -54,7 +56,6 @@ end)
 
 ESX.RegisterServerCallback('JAM_Drugs:GetConfig', function(source, cb)
 	if not JAM_Drugs then return; end
-	print(JAM_Drugs.Config, JAM_Drugs.Config.Zones)
 	cb(JAM_Drugs.Config)
 end)
 
@@ -65,6 +66,22 @@ ESX.RegisterServerCallback('JAM_Drugs:GetDrugCount', function(source, cb, drug)
 	local jamdrug = 'jam' .. drug
 	local count = xPlayer.getInventoryItem(jamdrug).count
 	cb(count)
+end)
+
+ESX.RegisterServerCallback('JAM_Drugs:GetAllDrugCount', function(source, cb) 
+	local xPlayer = ESX.GetPlayerFromId(source)
+	if not xPlayer then return; end
+	local playerDrugs = {}
+	local didFill = false
+	for k,v in pairs(JAM_Drugs.Config.Items) do 
+		if (xPlayer.getInventoryItem(v.Name).count) > 0 then
+			table.insert(playerDrugs, { name = v.Name, label = v.Label, count = xPlayer.getInventoryItem(v.Name).count, value = v.Value } ); 
+			didFill = true
+		end
+	end
+
+	if didFill then	cb(playerDrugs)
+	else cb(false); end
 end)
 
 ESX.RegisterServerCallback('JAM_Drugs:CheckZonePlayers', function(source, cb, zone) 
