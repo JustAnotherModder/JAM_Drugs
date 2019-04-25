@@ -4,6 +4,8 @@
 - If you do try and install this, you're going to need the following:
 - https://github.com/JustAnotherModder/JAM_Utilities
 - https://github.com/JustAnotherModder/JAM_SafeCracker
+- IPList must be used with FiveM-IPL for desired interior props.
+- No sql table provided. No support. Don't post an issue.
 
 # SCREENSHOTS
 <details>
@@ -28,3 +30,4 @@
 
 # DISCLAIMER
 - Any and all improvements must be sent back to the author (me).
+- No support. Don't post an issue.
