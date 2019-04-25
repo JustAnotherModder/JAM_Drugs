@@ -1,4 +1,111 @@
-TriggerEvent('esx:getSharedObject', function(obj) ESX = obj end)	
+AddEventHandler('onMySQLReady', function(...) JAM_Drugs.SQLReady = true; end)
+
+function JAM_Drugs:GetESX(obj) ESX = obj; self.ESX = obj; end
+function JAM_Drugs:GetJUtils(obj) JUtils = obj; self.JUtils = obj; end
+
+TriggerEvent('esx:getSharedObject', function(...) JAM_Drugs:GetESX(...); end)	
+
+function JAM_Drugs:ServerStart()
+	-- Comment this out when testing.
+	-- while not JAM_Drugs.SQLReady do
+	-- 	Citizen.Wait(0)
+	-- end
+	-- END COMMENT OUT
+
+	TriggerEvent('JAM_Utilities:GetSharedObject', function(...) JAM_Drugs:GetJUtils(...); end)
+
+	self:ResetZones()
+end
+
+function JAM_Drugs:ResetZones()
+	if not self or not self.Zones then return; end
+	for k,v in pairs(self.Zones) do
+		TriggerEvent('JAM_Drugs:SetZonePlayers', v.ZoneTitle, 0)
+		TriggerEvent('JAM_Drugs:SetZoneSafeLocked', v.ZoneTitle, 0)
+	end
+end
+
+AddEventHandler('onResourceStart', function(resourceName) if resourceName == 'JAM_Drugs' then JAM_Drugs:ServerStart(); end; end)
+
+ESX.RegisterServerCallback('JAM_Drugs:GetDrugZones', function(source, cb)
+	if not JAM_Drugs or not JAM_Drugs.Zones then return; end
+	cb(JAM_Drugs.Zones)
+end)
+
+ESX.RegisterServerCallback('JAM_Drugs:GetZoneData', function(source, cb, zone)
+	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})
+	if data[1] and type(data[1]) == 'table' then returnData = data[1]; 
+	else returnData = false; end
+	cb(returnData)
+end)
+
+RegisterNetEvent('JAM_Drugs:SetZonePlayers')
+AddEventHandler('JAM_Drugs:SetZonePlayers', function(zone, players)
+	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})
+	if not data or not data[1] then return; end
+	if players ~= 0 then playerCount = math.max(0, data[1].players + players) else playerCount = 0; end
+	MySQL.Sync.execute("UPDATE jam_drugzones SET players=@playercount WHERE zone=@zone",{['@playercount'] = playerCount, ['@zone'] = zone})		
+end)
+
+RegisterNetEvent('JAM_Drugs:SetZoneSafeLocked')
+AddEventHandler('JAM_Drugs:SetZoneSafeLocked', function(zone, safelock)
+	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})
+	if not data or not data[1] then return; end
+	if safelock ~= 0 then safeLocked = data[1].safelockout + safelock else safeLocked = 0; end
+	MySQL.Sync.execute("UPDATE jam_drugzones SET safelockout=@safelocked WHERE zone=@zone",{['@safelocked'] = safeLocked, ['@zone'] = zone})		
+end)
+
+AddEventHandler('playerDropped', function(reason)
+	if not ESX then return; end
+	if not JUtils then return; end
+	local xPlayer = ESX.GetPlayerFromId(source)
+	local lastPos = xPlayer.getLastPosition()
+	local posVec = vector3(lastPos.x, lastPos.y, lastPos.z)
+
+	local nearest,nearestDist,nearestCoords = JUtils:FindNearestZone(posVec, JAM_Drugs.Zones)
+
+	if nearestDist and nearestDist < JAM_Drugs.Config.ZoneLoadDist then
+		local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = nearest.ZoneTitle})
+		if data[1].players <= 1 then 
+			TriggerEvent('JAM_Drugs:SetZoneSafeLocked', nearest.ZoneTitle, 0)
+		end
+
+		TriggerEvent('JAM_Drugs:SetZonePlayers', nearest.ZoneTitle, -1)
+	end	
+end)
+
+ESX.RegisterServerCallback('JAM_Drugs:GetHeat', function(source, cb)
+	local xPlayer = ESX.GetPlayerFromId(source)
+	if not xPlayer then return; end
+
+	local heat = 0
+	local drugtypes = 0
+
+	for k,v in pairs(JUtils.Weapons) do
+		for k,v in pairs(v) do
+			if xPlayer.getWeapon(v) then heat = heat + 20; end
+		end
+	end
+
+	for k,v in pairs(JAM_Drugs.Items) do
+		drugtypes = drugtypes + 1
+		local drugcount = xPlayer.getInventoryItem(v.Name).count
+		heat = heat + drugcount
+	end
+
+	local val = heat / drugtypes
+	val = math.min(val, 100)
+	cb(val)
+end)
+
+ESX.RegisterServerCallback('JAM_Drugs:GetDrugCount', function(source, cb, drug) 
+	local xPlayer = ESX.GetPlayerFromId(source)
+	if not xPlayer then return; end
+
+	local jamdrug = 'jam' .. drug
+	local count = xPlayer.getInventoryItem(jamdrug).count
+	cb(count)
+end)
 
 ESX.RegisterServerCallback('JAM_Drugs:PurchaseDrug', function(source, cb, drug, price, amount)
 	local xPlayer = ESX.GetPlayerFromId(source)
@@ -34,87 +141,6 @@ ESX.RegisterServerCallback('JAM_Drugs:PurchaseDrug', function(source, cb, drug, 
 	cb(hasEnough, msg, finalVal)
 end)
 
-AddEventHandler('playerDropped', function(reason)
-	local source = source
-	local xPlayer = ESX.GetPlayerFromId(source)
-	if not xPlayer then return; end
-	local lastPos = xPlayer.getLastPosition()
-	local nearest,nearestDist,nearestCoords = JAM_Drugs:FindNearestMarker(lastPos)
-	if not nearest or not JAM_Drugs or not JAM_Drugs.Config then return; end
-	if nearestDist < JAM_Drugs.Config.LoadDist then 
-		TriggerEvent('JAM_Drugs:SetZonePlayers', nearest.ZoneTitle, -1)
-		TriggerEvent('JAM_Drugs:SetSafeLocked', nearest.ZoneTitle, false)
-	end	
-end)
-
-AddEventHandler('onMySQLReady', function(...)
-	for k,v in pairs(JAM_Drugs.Config.Zones) do
-		TriggerEvent('JAM_Drugs:SetZonePlayers', v.ZoneTitle, 0)
-		TriggerEvent('JAM_Drugs:SetSafeLocked', v.ZoneTitle, false)
-	end
-end)
-
-ESX.RegisterServerCallback('JAM_Drugs:GetConfig', function(source, cb)
-	if not JAM_Drugs then return; end
-	cb(JAM_Drugs.Config)
-end)
-
-ESX.RegisterServerCallback('JAM_Drugs:GetDrugCount', function(source, cb, drug) 
-	local xPlayer = ESX.GetPlayerFromId(source)
-	if not xPlayer then return; end
-
-	local jamdrug = 'jam' .. drug
-	local count = xPlayer.getInventoryItem(jamdrug).count
-	cb(count)
-end)
-
-ESX.RegisterServerCallback('JAM_Drugs:GetAllDrugCount', function(source, cb) 
-	local xPlayer = ESX.GetPlayerFromId(source)
-	if not xPlayer then return; end
-	local playerDrugs = {}
-	local didFill = false
-	for k,v in pairs(JAM_Drugs.Config.Items) do 
-		if (xPlayer.getInventoryItem(v.Name).count) > 0 then
-			table.insert(playerDrugs, { name = v.Name, label = v.Label, count = xPlayer.getInventoryItem(v.Name).count, value = v.Value } ); 
-			didFill = true
-		end
-	end
-
-	if didFill then	cb(playerDrugs)
-	else cb(false); end
-end)
-
-ESX.RegisterServerCallback('JAM_Drugs:CheckZonePlayers', function(source, cb, zone) 
-	local returnData = false
-	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})	
-	if data[1] and data[1].players ~= nil then returnData = data[1].players; end
-	cb(returnData)
-end)
-
-RegisterNetEvent('JAM_Drugs:SetZonePlayers')
-AddEventHandler('JAM_Drugs:SetZonePlayers', function(zone, val)
-	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})	
-	if val ~= 0 then playerCount = data[1].players + val
-	else playerCount = val; end
-	if playerCount < 0 then playerCount = 0; end
-	MySQL.Sync.execute("UPDATE jam_drugzones SET players=@playercount WHERE zone=@zone",{['@playercount'] = playerCount, ['@zone'] = zone})	
-end)
-
-ESX.RegisterServerCallback('JAM_Drugs:CheckSafeLocked', function(source, cb, zone) 
-	local returnData = false
-	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})		
-	if data[1] and data[1].safelockout ~= nil then returnData = data[1].safelockout; end
-	cb(returnData)
-end)
-
-RegisterNetEvent('JAM_Drugs:SetSafeLocked')
-AddEventHandler('JAM_Drugs:SetSafeLocked', function(zone, locked) 
-	local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = zone})		
-	if zone ~= nil and locked ~= nil and data[1] then
-		MySQL.Sync.execute("UPDATE jam_drugzones SET safelockout=@safelockout WHERE zone=@zone",{['@safelockout'] = locked, ['@zone'] = zone})	
-	end
-end)
-
 ESX.RegisterServerCallback('JAM_Drugs:SellDrug', function(source, cb, drug, price, amount)
 	local xPlayer = ESX.GetPlayerFromId(source)
 	if not xPlayer then return; end
@@ -134,38 +160,14 @@ ESX.RegisterServerCallback('JAM_Drugs:SellDrug', function(source, cb, drug, pric
 	cb(hasEnough)
 end)
 
-ESX.RegisterServerCallback('JAM_Drugs:GetHeat', function(source, cb)
-	local xPlayer = ESX.GetPlayerFromId(source)
-	if not xPlayer then return; end
-
-	local heat = 0
-	local drugtypes = 0
-
-	for k,v in pairs(JAM_Drugs.Config.Weapons) do
-		for k,v in pairs(v) do
-			if xPlayer.getWeapon(v) then heat = heat + 50; end
-		end
-	end
-
-	for k,v in pairs(JAM_Drugs.Config.Items) do
-		drugtypes = drugtypes + 1
-		local drugcount = xPlayer.getInventoryItem(v.Name).count
-		heat = heat + drugcount
-	end
-
-	local val = heat / drugtypes
-	val = math.min(val, 100)
-	cb(val)
-end)
-
 function JAM_Drugs.Robbed(source)
-	if not JAM_Drugs or not JAM_Drugs.Config or not JAM_Drugs.Config.Items then return; end
+	if not JAM_Drugs or not JAM_Drugs.Items then return; end
 	local xPlayer = ESX.GetPlayerFromId(source)
 	if not xPlayer then return; end
 
 	local stealableItems = {}
 
-	for k,v in pairs(JAM_Drugs.Config.Items) do
+	for k,v in pairs(JAM_Drugs.Items) do
 		if xPlayer.getInventoryItem(v.Name) and xPlayer.getInventoryItem(v.Name).count > 0 then
 			local itemCount = xPlayer.getInventoryItem(v.Name).count
 			table.insert(stealableItems, { item = v.Name, count = itemCount })
@@ -173,14 +175,29 @@ function JAM_Drugs.Robbed(source)
 	end
 
 	for k,v in pairs(stealableItems) do
-	local stolenAmount = math.floor(v.count / JAM_Drugs.Config.RobberAmount)
+	local stolenAmount = math.floor(v.count / JAM_Drugs.Config.RobberyAmount)
 		xPlayer.removeInventoryItem(v.item, stolenAmount)
 	end
 
 	local money = xPlayer.getAccount('black_money').money
-	local stolenAmount = math.floor(money / JAM_Drugs.Config.RobberAmount)
+	local stolenAmount = math.floor(money / JAM_Drugs.Config.RobberyAmount)
 	if money then xPlayer.removeAccountMoney('black_money', stolenAmount); end
 end
 
 RegisterNetEvent('JAM_Drugs:GetRobbed')
 AddEventHandler('JAM_Drugs:GetRobbed', function() JAM_Drugs.Robbed(source); end)
+
+ESX.RegisterServerCallback('JAM_Drugs:GetAllDrugCount', function(source, cb) 
+	local xPlayer = ESX.GetPlayerFromId(source)
+	if not xPlayer then return; end
+	local playerDrugs = {}
+	local didFill = false
+	for k,v in pairs(JAM_Drugs.Items) do 
+		if (xPlayer.getInventoryItem(v.Name).count) > 0 then
+			table.insert(playerDrugs, { name = v.Name, label = v.Label, count = xPlayer.getInventoryItem(v.Name).count, value = v.Price } ); 
+			didFill = true
+		end
+	end
+	if didFill then	cb(playerDrugs)
+	else cb(false); end
+end)

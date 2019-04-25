@@ -1,581 +1,89 @@
-function JAM_Drugs:GetESX(obj) self.ESX = obj; ESX = obj; end
-function JAM_Drugs:GetJUtils(obj) self.JUtils = obj; JUtils = obj; end
-function JAM_Drugs:GetJSC(obj) self.JSC = obj; JSC = obj; end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##       Client Start & Update       ##--
---##                                   ##--
---#######################################--
--------------------------------------------
+function JAM_Drugs:GetESX(obj) ESX = obj; self.ESX = obj; end
+function JAM_Drugs:GetJUtils(obj) JUtils = obj; self.JUtils = obj; end
+function JAM_Drugs:GetJSC(obj) JSC = obj; self.JSC = obj; end
 
 function JAM_Drugs:ClientStart()
-	if not self then return; end
-	while not ESX or not self.ESX or not JSC or not self.JSC or not JUtils or not self.JUtils do
+	while not ESX or not self.ESX do
 		TriggerEvent('esx:getSharedObject', function(...) self:GetESX(...); end)
-        TriggerEvent('JAM_Utilities:GetSharedObject', function(...) self:GetJUtils(...); end)
-        TriggerEvent('JAM_SafeCracker:GetSharedObject', function(...) self:GetJSC(...); end)
 		Citizen.Wait(0)
 	end
 
-    while not ESX.IsPlayerLoaded() do
-        Citizen.Wait(0)
-    end
+	while not JUtils or not self.JUtils do
+		TriggerEvent('JAM_Utilities:GetSharedObject', function(...) self:GetJUtils(...); end)
+		Citizen.Wait(0)
+	end
 
-    self:ClientUpdate()
+	while not JSC or not self.JSC do
+		TriggerEvent('JAM_SafeCracker:GetSharedObject', function(...) self:GetJSC(...); end)
+		Citizen.Wait(0)
+	end
+
+	while not ESX.IsPlayerLoaded() do
+		Citizen.Wait(0)
+	end
+
+	self:ClientUpdate()
 end
 
 function JAM_Drugs:ClientUpdate()
-	if not self then return; end
 	while true do
-        self.tick = (self.tick or 0) + 1
+		self.tick = (self.tick or 0) + 1
 
-        if self.tick % 100 == 1 then self:GetNearest(); self:BlipCheck(); self:GetNearestNPC(); end        
+		if (self.tick % 100 == 0) then
+			self:PositionCheck()
+		end
 
-        self:InputCheck()
-        self:MarkerCheck()                   
-        self:PositionCheck()
-  
-        if self.tick % 100 == 1 then self:EntityCheck();  end 
+		self:GetClosestNPC()
+		self:InputCheck()
 
-        if self.tick % 200 == 1 then
-            if not HasStreamedTextureDictLoaded ("commonmenu") then RequestStreamedTextureDict ("commonmenu", true) ; end
-            if not HasStreamedTextureDictLoaded ("timerbars")  then RequestStreamedTextureDict ("timerbars", true)  ; end   
-        end
 		Citizen.Wait(0)
+
+		-- FOR TESTING ONLY
+		-- REMOVE LATER
+		-- SRS REMEMBER THIS
+		if not IsRadarHidden() then self:SetUI(false); end
 	end
 end
 
-function JAM_Drugs:GetNearest()
-    local localCoords = GetEntityCoords(PlayerPedId())
-    self.nearest,self.nearestDist,self.nearestCoords = self:FindNearestMarker(localCoords)
+-- FOR TESTING ONLY
+-- REMOVE LATER
+-- SRS REMEMBER THIS
+function JAM_Drugs:SetUI(val)
+  if val == true then num = 1.0 else num = 0.0; end
+  TriggerEvent('es:setMoneyDisplay', num)
+  DisplayRadar(val)
+  ESX.UI.HUD.SetDisplay(num)
 end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##          Markers & Blips          ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:BlipCheck()
-	if not self or not self.Config or not self.Config.EnableBlips or not self.nearest.ZonePos then return; end
-    if self.nearestDist < self.nearest.ViewRadius and not self.nearest.blip then
-		local blip = AddBlipForCoord(self.nearest.ZonePos)
-
-		SetBlipSprite			(blip, self.nearest.BlipSprite)
-		SetBlipColour			(blip, self.nearest.BlipColor)
-		SetBlipDisplay			(blip, self.Config.BlipDisplay)
-		SetBlipScale			(blip, self.Config.BlipScale)
-		SetBlipAsShortRange		(blip, true)
-
-		BeginTextCommandSetBlipName	("STRING")
-		AddTextComponentString		(self.nearest.ZoneTitle)
-		EndTextCommandSetBlipName	(blip)
-
-		self.nearest.blip = blip
-
-	elseif self.nearestDist > self.nearest.ViewRadius and self.nearest.blip then
-		local blip = self.nearest.blip
-		self.nearest.blip = nil
-		RemoveBlip(blip)
-	end
-end
-
-function JAM_Drugs:MarkerCheck()
-    if not self or not self.Config or not self.Config.EnableMarkers then return; end
-    if not self.nearestDist or not self.nearestDist < self.Config.MarkerDrawDist then return; end
-    self:MarkerHandler(self.nearestCoords, self.Config.MarkerScale)
-end
-
-function JAM_Drugs:GetNearestNPC()
-    if not self or not self.Config or not ESX or not self.ESX then return; end
-
-    local NPCIgnoreList = { PlayerPedId(), }
-    local playerPos = GetEntityCoords(GetPlayerPed())
-
-    local closestPed,closestDist = ESX.Game.GetClosestPed(playerPos, NPCIgnoreList)
-
-    if closestDist < self.Config.NPCSalesDist then 
-        self.ActionData = self.ActionData or {}
-        self.ActionData.ClosestPed = closestPed  
-    else 
-        self.ActionData = self.ActionData or {}
-        self.ActionData.ClosestPed = false; 
-    end
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##  Check If Entities Need Spawning  ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:EntityCheck()  
-    if self.nearestDist < (self.Config.LoadDist * (math.random(75, 125) / 100)) then
-        ESX.TriggerServerCallback('JAM_Drugs:CheckZonePlayers', function(playerCount) zonePlyCount = playerCount; end, self.nearest.ZoneTitle)
-
-        if zonePlyCount and zonePlyCount == 0 and not self.SpawnedPeds then  
-            self.SpawnedPeds = self.SpawnedPeds or {}
-            TriggerServerEvent('JAM_Drugs:SetZonePlayers', self.nearest.ZoneTitle, 1)         
-            self:BasicSpawn(self.nearest)
-        end
-
-        if self.nearest.WorkerEnt then workerModels = self.nearest.WorkerEnt; end
-        if self.nearest.GuardEnt then guardModels = self.nearest.GuardEnt; end
-
-
-    elseif self.nearestDist > (self.Config.LoadDist * (math.random(175,225) / 100)) and self.SpawnedPeds then 
-        self.DespawnPeds()         
-    end
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##  If Zone Unoccupied, Spawn These  ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:BasicSpawn(nearest)
-    if nearest.SalesEnt then self:LoadSalesEnts(nearest); end
-    if nearest.WorkerEnt then self:LoadWorkerEnts(nearest); end
-    if nearest.GuardEnt then self:LoadGuardEnts(nearest); end
-    if nearest.SafePos then self:LoadSafe(nearest); end
-end
-
-function JAM_Drugs:LoadSafe(nearest)
-    self.SpawnedObjs = self.SpawnedeObjs or {}
-    local safePos = nearest.SafePos
-    local safeObj = JSC:SpawnSafeObject(JSC.SafeObjects, safePos, 0.0)
-    for k,v in pairs(safeObj) do table.insert(self.SpawnedObjs, v); end
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##     Load Specific Entity Funcs    ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:LoadSalesEnts(nearest)
-    local sellers = nearest.SalesEnt
-    local randModel = self.GetHashKey(sellers.Models[math.random(1, #sellers.Models)])
-    local randPos = sellers.Positions[math.random(1, #sellers.Positions)]
-      
-    local weaponHash = self.GetHashKey('WEAPON_COMBATPISTOL')
-    self:LoadWeapons(self.Config.Weapons.Pistol)
-    self:LoadModels(sellers.Models)  
-
-    local newPed = CreatePed(sellers.Type, randModel, randPos.xyz, randPos.w, true, false)
-    SetPedRelationshipGroupHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
-    SetPedRelationshipGroupDefaultHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
-
-    GiveWeaponToPed(newPed, weaponHash, 1000, false, false)
-    if sellers.FreezeEnt then
-        FreezeEntityPosition(newPed, true)
-    end
-
-    self:UnloadModels(sellers.Models)
-    self:UnloadWeapons(self.Config.Weapons.Pistol)
-
-    table.insert(self.SpawnedPeds, newPed)
-end
-
-function JAM_Drugs:LoadWorkerEnts(nearest)
-    local workers = nearest.WorkerEnt
-
-    self:LoadModels(workers.Models)  
-    self:LoadAnim(workers.AnimDict)
-
-    local weaponHash = self.GetHashKey('WEAPON_KNIFE')
-    self:LoadWeapons(self.Config.Weapons.Melee)
-
-    for k,v in pairs(workers.Positions) do
-        local randModel = self.GetHashKey(workers.Models[math.random(1, #workers.Models)])             
-        local newPed = CreatePed(workers.Type, randModel, v.xyz, v.w, true, false)
-
-        if type(k) == 'string' then
-            TaskPlayAnim(newPed, workers.AnimDict, k, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)
-        else
-            TaskPlayAnim(newPed, workers.AnimDict, workers.AnimName, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)
-        end
-
-        SetPedRelationshipGroupHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
-        SetPedRelationshipGroupDefaultHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
-        GiveWeaponToPed(newPed, weaponHash, 1, false, false)
-
-        table.insert(self.SpawnedPeds, newPed)
-    end
-
-    self:UnloadModels(workers.Models)
-    self:UnloadAnim(workers.AnimDict)
-    self:UnloadWeapons(self.Config.Weapons.Melee)
-end
-
-function JAM_Drugs:LoadGuardEnts(nearest)
-    ESX.TriggerServerCallback('JAM_Drugs:GetHeat', function(heat)
-        local guards = nearest.GuardEnt
-        local weapons = self:GetEntWeaponTier(heat)
-
-        for key,val in pairs(weapons) do
-            for k,v in pairs(self.Config.Weapons) do
-                if val == k then self:LoadWeapons(v) end
-            end
-        end
-
-        self:LoadModels(guards.Models)
-        local count = 0
-        if heat > 75 then count = -10; end
-        local attempt = 0
-        local takenpos = {}
-        while count == 0 or count < heat / 20 do
-            local randomPos = guards.Positions[math.random(1, #guards.Positions)] 
-            local posTaken = false
-            for k,v in pairs(takenpos) do 
-                attempt = attempt + 1
-                if v.x == randomPos.x and v.y == randomPos.y and v.z == randomPos.z then 
-                    posTaken = true 
-                end
-            end
-
-            if attempt > count + 1000 then
-                return
-            end
-
-            if not posTaken then
-                count = count + 1
-
-                local randModel = self.GetHashKey(guards.Models[math.random(1, #guards.Models)])
-                local newPed = CreatePed(guards.Type, randModel, randomPos.xyz, randomPos.w, true, false)             
-
-                local weaponCategory = math.random(1, #weapons)
-                local randomWeapon
-                for k,v in pairs(self.Config.Weapons) do
-                    if k == weapons[weaponCategory] then 
-                        randomWeapon = v[math.random(1, #v)]
-                    end 
-                end       
-
-                SetPedRelationshipGroupHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
-                SetPedRelationshipGroupDefaultHash(newPed, self.GetHashKey(nearest.EntSettings.Relationship))
-
-                GiveWeaponToPed(newPed, randomWeapon, 1000, true, true)
-
-                table.insert(takenpos, randomPos)
-                table.insert(self.SpawnedPeds, newPed)  
-            end
-
-            Citizen.Wait(0)
-        end
-
-        for key,val in pairs(weapons) do
-            for k,v in pairs(self.Config.Weapons) do
-                if val == k then
-                    self:UnloadWeapons(v)
-                end
-            end
-        end
-
-        self:UnloadModels(guards.Models)
-    end) 
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##  If Away From Zone, Despawn Peds  ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs.DespawnPeds() 
-    if not self then self = JAM_Drugs; end
-
-    local playerPos = GetEntityCoords(GetPlayerPed())
-
-    if self.nearest then
-        TriggerServerEvent('JAM_Drugs:SetZonePlayers', self.nearest.ZoneTitle, -1)   
-        TriggerServerEvent('JAM_Drugs:SetSafeLocked', self.nearest.ZoneTitle, 0)   
-    end
-
-    if self.SpawnedPeds then
-        for k,v in pairs(self.SpawnedPeds) do
-            SetEntityCoords(v, playerPos.x, playerPos.y, playerPos.z + 50, false, false, false, false)
-            DeletePed(v)
-        end   
-        self.SpawnedPeds = false
-    end
-
-    if self.SpawnedObjs then
-        for k,v in pairs(self.SpawnedObjs) do
-            DeleteObject(v)
-        end
-        self.SafeActive = false
-        self.SpawnedeObjs = false
-    end
-
-    if self.RobberPeds then
-        for k,v in pairs(self.RobberPeds) do
-            DeletePed(v)
-        end
-        self.RobberPeds = false
-    end
-end
-
-function JAM_Drugs.DespawnRobbers()
-    if JAM_Drugs.RobberPeds then
-        for k,v in pairs(JAM_Drugs.RobberPeds) do
-            DeleteEntity(v)
-        end
-        JAM_Drugs.RobberPeds = false
-    end
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##       Check If Near Markers       ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:PositionCheck()
-    if not self or not self.Config then return; end
-    self.StandingInMarker = self.StandingInMarker or false
-    local inMarker = false  
-
-    local localCoords = GetEntityCoords(PlayerPedId())
-    local nearest, nearestDist, nearestCoords = self:FindNearestMarker(localCoords)
-
-    if nearestDist < self.Config.MarkerScale.x then inMarker = true; end
-    if inMarker and not self.StandingInMarker then
-    	self.StandingInMarker = true
-    	self.ActionData = ActionData or {}
-        for k,v in pairs(nearest) do
-        	if (type(v) == 'vector4' or type(v) == 'vector3') and (v.x == nearestCoords.x) and (v.y == nearestCoords.y) and ( v.z == nearestCoords.z) then
-        		if k == 'ZonePos' then
-		            action,sales,safe,msg = nearest,false,false,"enter the ~y~" .. nearest.ZoneTitle .. "."  
-        		elseif k == 'ExitPos' then
-                    action,sales,safe,msg = nearest,false,false,"leave the ~y~" .. nearest.ZoneTitle .. "."
-        		elseif k == 'ActionPos' then
-                    action,sales,safe,msg = false,nearest,false,(nearest.ActionType:sub(1,1):lower()..nearest.ActionType:sub(2)) .. " ~y~" .. nearest.DrugTitle
-                elseif k == 'SafeActionPos' then 
-                    action,sales,safe,msg = false,false,nearest,"~y~attempt ~r~to ~y~crack ~r~ the ~y~safe."
-        		end
-
-                self.ActionData.Action = action                
-                self.ActionData.SalesZone = sales 
-                self.ActionData.SafeZone = safe
-                self.ActionData.Message = "~y~Press ~INPUT_PICKUP~ ~r~to " .. msg
-        	end
-        end
-    end
-
-    if not inMarker and self.StandingInMarker then
-        self.StandingInMarker = false
-        self.ActionData.Action = false
-        self.ActionData.SalesZone = false
-        self.ActionData.SafeZone = false
-        TriggerEvent('JAM_SafeCracker:EndMinigame', false, false)
-        self.ESX.UI.Menu.CloseAll()
-    end
-end
-
--- -----------------------------------------
--- #######################################--
--- ##                                   ##--
--- ##   If Inside Marker, Check Input   ##--
--- ##                                   ##--
--- #######################################--
--- -----------------------------------------
 
 function JAM_Drugs:InputCheck()
-    if not self or not self.ActionData then return; end
-    if not self.ActionData.Action and not self.ActionData.SalesZone and not self.ActionData.SafeZone and not self.ActionData.ClosestPed then return; end
-    self.Timer = self.Timer or 0
+	if not self.ActionData then return; end
+	self.Timer = self.Timer or 0
+	if nearestDist < self.Config.ActionDist then 
+		if self.ActionData.Message then
+		    SetTextComponentFormat('STRING') 
+		    AddTextComponentString(self.ActionData.Message)
+		    DisplayHelpTextFromStringLabel(0, 0, 1, -1)
+		end
 
-    if self.ActionData.Action or self.ActionData.SafeZone or self.ActionData.SalesZone then 
-        SetTextComponentFormat('STRING') 
-        AddTextComponentString(self.ActionData.Message)
-        DisplayHelpTextFromStringLabel(0, 0, 1, -1)
-    end
-        --AddTextComponentString(false)
-    --end
-    local playerPed = PlayerPedId()
 
-    if IsControlPressed(0, self.Config.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
-        if self.ActionData.Action then
-            self:MarkerTeleport(self.ActionData.Action)
-        elseif self.ActionData.SalesZone and self.SpawnedPeds and not self.BeingRobbed then
-            self:SalesMenu(self.ActionData.SalesZone)
-        elseif self.ActionData.SafeZone and self.SpawnedPeds and not self.SafeActive then
-            --self.SafeActive = true
-            ESX.TriggerServerCallback('JAM_Drugs:CheckSafeLocked', function(locked) 
-                if locked == 1 then
-                    TriggerEvent('esx:showNotification', "~r~Somebody is already attempting to crack this safe.")
-                    return
-                end
+	    if IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
+	    	self.Timer = GetGameTimer()
+			if nearestAction == "ActionPos" then self:OpenSalesMenu(nearestZone)
+			elseif nearestAction == "EntryPos" then self:MarkerTeleport(nearestZone, false)
+			elseif nearestAction == "ExitPos" then self:MarkerTeleport(nearestZone, true)
+			elseif nearestAction == "SafeActionPos" then self:HandleSafeMinigame(nearestZone)
+			elseif self.ClosestPed then print("SELL TO NPC") 
+			end
+	    end
+	elseif self.ClosestPed and IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then		
+	    self.Timer = GetGameTimer()
+		self:SellDrugsToPed(self.ClosestPed)
+	end
 
-                if locked == 2 then 
-                    TriggerEvent('esx:showNotification', "~r~The failsafe for this vault has already been triggered.")
-                    return
-                end
-
-                if locked == 3 then
-                    TriggerEvent('esx:showNotification', "~r~Somebody has already cracked this safe.")
-                    return
-                end
-
-                TriggerServerEvent('JAM_Drugs:SetSafeLocked', self.ActionData.SafeZone.ZoneTitle, 1)
-
-                TriggerEvent('JAM_SafeCracker:StartMinigame', self.ActionData.SafeZone.SafeRewards)
-                if self.SpawnedPeds and #self.SpawnedPeds > 0 then
-                    for k,v in pairs(self.SpawnedPeds) do
-                        if not IsPedInCombat(v, playerPed) then
-                            TaskCombatPed(v, playerPed, 0, 16)
-                        end
-                    end
-                end 
-
-            end, self.ActionData.SafeZone.ZoneTitle)
-        
-        elseif self.ActionData.ClosestPed and not self.keyboardActive and not IsPedInVehicle(self.ActionData.ClosestPed) and not IsPedInCombat(self.ActionData.ClosestPed, playerPed) then
-            self:SellToRandomPed(self.ActionData.ClosestPed)
-        end
-
-        self.StandingInMarker = false
-        self.Timer = GetGameTimer()            
-    end
+	
 end
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##    If Inside TPMarker, Teleport   ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:MarkerTeleport(zone)
-    local ped = PlayerPedId()
-    for k,v in pairs(self.Config.Zones) do
-        if v.ZonePos then
-            if (v.ZonePos.x == self.nearestCoords.x) and (v.ZonePos.y == self.nearestCoords.y) and (v.ZonePos.z == self.nearestCoords.z) then
-                SetEntityCoords(ped, v.ExitPos, v.ExitHeading, false, false, false)
-            elseif(v.ExitPos.x == self.nearestCoords.x) and (v.ExitPos.y == self.nearestCoords.y) and (v.ExitPos.z == self.nearestCoords.z) then
-                SetEntityCoords(ped, v.ZonePos, v.ZoneHeading, false, false, false)    
-            end
-        end
-    end
-end
-
---------------------------------------------
---########################################--
---##                                    ##--
---##  Inside Action Marker Trade Menu   ##--
---##                                    ##--
---########################################--
---------------------------------------------
-
-function JAM_Drugs:SalesMenu(zone)
-    if not self or not zone or not self.ESX then return; end
-    local drugTitle = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
-    local actionType = zone.ActionType:sub(1,1):lower()..zone.ActionType:sub(2)
-
-    self.ESX.UI.Menu.CloseAll()
-    ESX.TriggerServerCallback('JAM_Drugs:GetDrugCount', function(userDrugAmount)
-        local maxAmount 
-        local salesData
-        local profitMargin
-
-        if zone.ZoneLimit then 
-            maxAmount = zone.ZoneLimit 
-            profitMargin = zone.ZonePrice / self.Config.SalesProfit
-            if userDrugAmount and userDrugAmount > 0 then 
-                maxAmount = maxAmount - userDrugAmount
-            end
-        end
-
-        if maxAmount and maxAmount > 0 then salesData = "Clean: ~y~$" .. (zone.ZonePrice + profitMargin) .. "~r~ / Dirty: ~y~$" .. (zone.ZonePrice - profitMargin)
-        else salesData = "Dirty: ~y~$" .. zone.ZonePrice; end
-
-        local c = self.drawTextTemplate()
-        c.font = 4
-        c.x = 0.5
-        c.y = 0.36
-        c.text = "~r~How much ~y~" .. drugTitle .. " ~r~do you want to ~y~" .. actionType .. "~r~? ( " .. salesData .."~r~ )"
-
-        self.keyboardActive = true
-
-        DisplayOnscreenKeyboard( 0, "","", (maxAmount or userDrugAmount), "", "", "", 30 )
-   
-        while self.keyboardActive do    
-            self.drawText(c)
-            DrawSprite("commonmenu", "gradient_nav", 0.5, 0.375, 0.32, 0.047, 0.0, 0, 0, 0, 210)
-
-            if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
-                self.keyboardActive = false
-                self.keyboardResult = GetOnscreenKeyboardResult()
-                local num = tonumber(self.keyboardResult)
-                if num ~= nil and num > 0 then
-                    if maxAmount then self:PurchaseDrugs(zone, num)
-                    else self:SellDrugs(zone, num)
-                    end
-                else 
-                    TriggerEvent('esx:showNotification', "~r~Enter a number next time.")
-                end
-            elseif self.keyboardActive and UpdateOnscreenKeyboard() ~= 0 then
-                self.keyboardActive = false
-            end            
-            Citizen.Wait(0)
-        end
-    end, drugTitle) 
-end
-
--------------------------------------------
---#######################################--
---##                                   ##--
---##    Purchase & Sell Drugs Menus    ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-function JAM_Drugs:PurchaseDrugs(zone, amount)
-    local str = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
-
-    ESX.TriggerServerCallback('JAM_Drugs:PurchaseDrug', function(valid, msg, finalprice)           
-        if valid == 1 then    
-            TriggerEvent('esx:showNotification', "~r~You purchased~y~ " .. amount .. " " .. str .. "~r~ for ~y~$" .. math.floor(finalprice) .. "~r~" ..msg)
-            if math.random(1, 100) > self.Config.SnitchingChance then self:HandleSnitching(zone.ZonePos); end 
-        elseif valid == 2 then
-            TriggerEvent('esx:showNotification', "~r~You can only carry ~y~" .. zone.ZoneLimit .. " " .. str .. "~r~ at a time.")
-        elseif valid == false then
-            TriggerEvent('esx:showNotification', "~r~You can't afford that much ~y" .. str .. ".")
-        end
-    end, str, zone.ZonePrice, amount)  
-end
-
-function JAM_Drugs:SellDrugs(zone, amount)  
-    local str = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
-
-    ESX.TriggerServerCallback('JAM_Drugs:SellDrug', function (valid)
-        if not valid then
-            TriggerEvent('esx:showNotification', "~r~You don't have enough ~y~" .. str .. " ~r~to sell.")
-        else
-            TriggerEvent('esx:showNotification', "~r~You sold ~y~" .. amount .. " " .. str .. " ~r~for ~y~$" .. math.floor(zone.ZonePrice * amount) .. " ~r~dirty money.")
-            self:HandleRobbing(zone, amount)
-        end
-    end, str, zone.ZonePrice, amount)  
-end
-
-function JAM_Drugs:SellToRandomPed(buyerPed)
+function JAM_Drugs:SellDrugsToPed(buyerPed)
     self.PedsThatPurchased = self.PedsThatPurchased or {}
     for k,v in pairs(self.PedsThatPurchased) do
         if buyerPed == v then return; end
@@ -585,8 +93,13 @@ function JAM_Drugs:SellToRandomPed(buyerPed)
 
     if math.random(1, 100) > self.Config.NPCSalesChance then 
         table.insert(self.PedsThatPurchased, buyerPed)
-        if math.random(1, 100) > (self.Config.SnitchingChance) then
+        if math.random(1, 100) > self.Config.SnitchingChance then
             JAM_Drugs:HandleSnitching(GetEntityCoords(PlayerPedId()))
+        elseif math.random(1,100) > self.Config.NPCAgroChance then
+        	local playerPed = PlayerPedId()
+            if not IsPedInCombat(v, playerPed) then
+                TaskCombatPed(v, playerPed, 0, 16)
+            end
         end
         return 
     end
@@ -599,7 +112,6 @@ function JAM_Drugs:SellToRandomPed(buyerPed)
         if userDrugInventory then
             randomDrug = math.random(1, #userDrugInventory)
         else return; end
-
 
         local maxAmount = self.Config.NPCSalesMax
         local salesData
@@ -657,13 +169,163 @@ function JAM_Drugs:SellToRandomPed(buyerPed)
     end)
 end
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##       Snitching & Robberies       ##--
---##                                   ##--
---#######################################--
--------------------------------------------
+function JAM_Drugs:HandleSafeMinigame(zone)
+	ESX.TriggerServerCallback('JAM_Drugs:GetZoneData', function(zoneData) 
+		if zoneData.safelockout == 1 then TriggerEvent('esx:showNotification', "~r~Somebody is already attempting to crack this safe."); return; end
+		if zoneData.safelockout == 2 then TriggerEvent('esx:showNotification', "~r~The failsafe for this vault has already been triggered."); return; end
+		if zoneData.safelockout == 3 then TriggerEvent('esx:showNotification', "~r~Somebody has already cracked this safe."); return; end
+
+		TriggerServerEvent('JAM_Drugs:SetZoneSafeLocked', zone.ZoneTitle, 1)
+
+		TriggerEvent('JAM_SafeCracker:StartMinigame', zone.SafeRewards)
+
+		local playerPed = PlayerPedId()
+	    if self.SpawnedPeds and #self.SpawnedPeds > 0 then
+	        for k,v in pairs(self.SpawnedPeds) do
+	            if not IsPedInCombat(v, playerPed) then
+	                TaskCombatPed(v, playerPed, 0, 16)
+	            end
+	        end
+	    end 
+	end, zone.ZoneTitle)
+end
+
+function JAM_Drugs:PositionCheck()
+	local playerPos = GetEntityCoords(PlayerPedId())
+	nearestZone,nearestAction,nearestDist,nearestPos = JUtils:FindNearestZone(playerPos, self.Zones)
+	if not nearestDist then return; end
+
+	if nearestDist < self.Config.ZoneLoadDist and not self.ZoneLoaded then
+		self.ZoneLoaded = true
+		Citizen.CreateThread(function() self:HandleZoneSpawn(nearestZone); end)
+	elseif nearestDist > self.Config.ZoneLoadDist * 2 and self.ZoneLoaded then
+		self.ZoneLoaded = false
+		Citizen.CreateThread(function() self:HandleZoneDespawn(nearestZone); end)
+	end 
+
+	self.ActionData = self.ActionData or {}
+
+	if nearestDist < self.Config.ActionDist then
+		self.ActionData.Action = nearestAction
+		self.ActionData.Zone = nearestZone
+
+		local str = "~r~Press ~INPUT_PICKUP~ to "
+		if nearestAction == "ActionPos" then self.ActionData.Message = str .. (nearestZone.ActionType:sub(1,1):lower() .. nearestZone.ActionType:sub(2)) .. " ~y~" .. nearestZone.DrugTitle .. "~r~."
+		elseif nearestAction == "EntryPos" then self.ActionData.Message = str .. "enter the ~y~" .. nearestZone.ZoneTitle .. "~r~."
+		elseif nearestAction == "ExitPos" then self.ActionData.Message = str .. "exit the ~y~" .. nearestZone.ZoneTitle .. "~r~."
+		elseif nearestAction == "SafeActionPos" then self.ActionData.Message = str .. "attempt to ~y~crack ~r~the ~y~safe."
+		end
+
+	else
+		self.ActionData.Action = false
+		self.ActionData.Zone = false
+		self.ActionData.Message = false
+	end
+
+    if self.Config.EnableBlips and nearestDist < nearestZone.ViewRadius and not self.ActiveBlip then
+		if nearestZone.Positions.EntryPos then blip = AddBlipForCoord(nearestZone.Positions.EntryPos)
+		else blip = AddBlipForCoord(nearestZone.Positions.ActionPos); end
+
+		SetBlipSprite			(blip, nearestZone.BlipSprite)
+		SetBlipColour			(blip, nearestZone.BlipColor)
+		SetBlipDisplay			(blip, nearestZone.BlipDisplay)
+		SetBlipScale			(blip, nearestZone.BlipScale)
+		SetBlipAsShortRange		(blip, true)
+
+		BeginTextCommandSetBlipName	("STRING")
+		AddTextComponentString		(nearestZone.ZoneTitle)
+		EndTextCommandSetBlipName	(blip)
+
+		self.ActiveBlip = blip
+
+	elseif self.Config.EnableBlips and nearestDist > nearestZone.ViewRadius and self.ActiveBlip then
+		local blip = self.ActiveBlip
+		self.ActiveBlip = nil
+		RemoveBlip(blip)
+	end		
+end
+
+function JAM_Drugs:OpenSalesMenu(zone)
+    local drugTitle = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
+    local actionType = zone.ActionType:sub(1,1):lower()..zone.ActionType:sub(2)
+
+    self.ESX.UI.Menu.CloseAll()
+    ESX.TriggerServerCallback('JAM_Drugs:GetDrugCount', function(userDrugAmount)
+        local maxAmount 
+        local salesData
+        local profitMargin
+
+        if zone.DrugLimit then 
+            maxAmount = zone.DrugLimit 
+            profitMargin = zone.DrugPrice / self.Config.SalesProfit
+            if userDrugAmount and userDrugAmount > 0 then 
+                maxAmount = maxAmount - userDrugAmount
+            end
+        end
+
+        if maxAmount and maxAmount > 0 then salesData = "Clean: ~y~$" .. (zone.DrugPrice + profitMargin) .. "~r~ / Dirty: ~y~$" .. (zone.DrugPrice - profitMargin)
+        else salesData = "Dirty: ~y~$" .. zone.DrugPrice; end
+
+        local c = JUtils.DrawTextTemplate()
+        c.font = 4
+        c.x = 0.5
+        c.y = 0.36
+        c.text = "~r~How much ~y~" .. drugTitle .. " ~r~do you want to ~y~" .. actionType .. "~r~? ( " .. salesData .."~r~ )"
+
+        self.keyboardActive = true
+
+        DisplayOnscreenKeyboard( 0, "","", (maxAmount or userDrugAmount), "", "", "", 30 )
+   
+        while self.keyboardActive do    
+            JUtils.DrawText(c)
+            DrawSprite("commonmenu", "gradient_nav", 0.5, 0.375, 0.32, 0.047, 0.0, 0, 0, 0, 210)
+
+            if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
+                self.keyboardActive = false
+                self.keyboardResult = GetOnscreenKeyboardResult()
+                local num = tonumber(self.keyboardResult)
+                if num ~= nil and num > 0 then
+                    if maxAmount then self:PurchaseDrugs(zone, num)
+                    else self:SellDrugs(zone, num)
+                    end
+                else 
+                    TriggerEvent('esx:showNotification', "~r~Enter a number next time.")
+                end
+            elseif self.keyboardActive and UpdateOnscreenKeyboard() ~= 0 then
+                self.keyboardActive = false
+            end            
+            Citizen.Wait(0)
+        end
+    end, drugTitle) 
+end
+
+function JAM_Drugs:PurchaseDrugs(zone, amount)
+    local str = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
+
+    ESX.TriggerServerCallback('JAM_Drugs:PurchaseDrug', function(valid, msg, finalprice)           
+        if valid == 1 then    
+            TriggerEvent('esx:showNotification', "~r~You purchased~y~ " .. amount .. " " .. str .. "~r~ for ~y~$" .. math.floor(finalprice) .. "~r~" ..msg)
+            if math.random(1, 100) > self.Config.SnitchingChance then self:HandleSnitching(zone.ZonePos); end 
+        elseif valid == 2 then
+            TriggerEvent('esx:showNotification', "~r~You can only carry ~y~" .. zone.ZoneLimit .. " " .. str .. "~r~ at a time.")
+        elseif valid == false then
+            TriggerEvent('esx:showNotification', "~r~You can't afford that much ~y" .. str .. ".")
+        end
+    end, str, zone.DrugPrice, amount)  
+end
+
+function JAM_Drugs:SellDrugs(zone, amount)  
+    local str = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
+
+    ESX.TriggerServerCallback('JAM_Drugs:SellDrug', function (valid)
+        if not valid then
+            TriggerEvent('esx:showNotification', "~r~You don't have enough ~y~" .. str .. " ~r~to sell.")
+        else
+            TriggerEvent('esx:showNotification', "~r~You sold ~y~" .. amount .. " " .. str .. " ~r~for ~y~$" .. math.floor(zone.DrugPrice * amount) .. " ~r~dirty money.")
+            Citizen.CreateThread(function() self:HandleRobbing(zone, amount); end)
+        end
+    end, str, zone.DrugPrice, amount)  
+end
 
 function JAM_Drugs:HandleSnitching(alertPosition)
     -- local plyPed = PlayerPedId()
@@ -673,47 +335,35 @@ function JAM_Drugs:HandleSnitching(alertPosition)
     -- TriggerServerEvent('esx_addons_gcphone:startCall', 'police', alertMsg, plyPos)
 end
 
-function JAM_Drugs:HandleRobbing(zone, amount)
-    if not zone or not ESX then return; end
+function JAM_Drugs:HandleRobbing(zone, amount)      
+    if not zone.RobberEnt then return; end
     self.BeingRobbed = self.BeingRobbed or false
     if not self.BeingRobbed then
-        local r = math.random(0, 100)
-        if r <= self.Config.RobberyChance then         
-            if not zone.RobberEnt then return; end
-            self.BeingRobbed = true
-
-
-            self:LoadModels(zone.RobberEnt.Models)
-
+        if math.random(0, 100) <= self.Config.RobberyChance then   
             self.RobberPeds = self.RobberPeds or {}
+            self.BeingRobbed = true            
 
-            local drugTitle = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
             local playerPed = PlayerPedId()
+            local drugTitle = (zone.DrugTitle:sub(1,1):lower()..zone.DrugTitle:sub(2))
 
             ESX.TriggerServerCallback('JAM_Drugs:GetHeat', function(heat)
                 local robbers = zone.RobberEnt
                 local weapons = self:GetEntWeaponTier(heat)
 
-                for key,val in pairs(weapons) do
-                    for k,v in pairs(self.Config.Weapons) do
-                        if val == k then self:LoadWeapons(v) end
-                    end
-                end
-
-                self:LoadModels(robbers.Models)
+            	JUtils:LoadModelTable(robbers.Models)
 
                 local count = 0
                 local attempt = 0
-                if heat > 75 then count = -10; end
-
                 local takenpos = {}
 
-                while count == 0 or count < heat / 20 do
+                if heat > 75 then count = -10; end
+
+                while count == 0 or count < (heat / 20) do
                     local randomPos = robbers.Positions[math.random(1, #robbers.Positions)] 
                     local posTaken = false
                     for k,v in pairs(takenpos) do 
                         attempt = attempt + 1
-                        if self:GetVecDist(randomPos.xyz, zone.ActionPos) < 50 then
+                        if JUtils:GetVecDist(randomPos.xyz, zone.Positions.ActionPos) < 50 then
                             if v.x == randomPos.x and v.y == randomPos.y and v.z == randomPos.z then 
                                 posTaken = true 
                             end
@@ -727,19 +377,19 @@ function JAM_Drugs:HandleRobbing(zone, amount)
                     if not posTaken then
                         count = count + 1
 
-                        local randModel = self.GetHashKey(robbers.Models[math.random(1, #robbers.Models)])
+                        local randModel = JUtils.GetHashKey(robbers.Models[math.random(1, #robbers.Models)])
                         local newPed = CreatePed(robbers.Type, randModel, randomPos.xyz, randomPos.w, true, false)             
 
                         local weaponCategory = math.random(1, #weapons)
                         local randomWeapon
-                        for k,v in pairs(self.Config.Weapons) do
+                        for k,v in pairs(JUtils.Weapons) do
                             if k == weapons[weaponCategory] then 
                                 randomWeapon = v[math.random(1, #v)]
                             end 
                         end       
 
-                        SetPedRelationshipGroupHash(newPed, self.GetHashKey(zone.EntSettings.Relationship))
-                        SetPedRelationshipGroupDefaultHash(newPed, self.GetHashKey(zone.EntSettings.Relationship))
+                        SetPedRelationshipGroupHash(newPed, JUtils.GetHashKey(zone.EntSettings.Relationship))
+                        SetPedRelationshipGroupDefaultHash(newPed, JUtils.GetHashKey(zone.EntSettings.Relationship))
 
                         GiveWeaponToPed(newPed, randomWeapon, 1000, true, true)
 
@@ -755,15 +405,7 @@ function JAM_Drugs:HandleRobbing(zone, amount)
                     Citizen.Wait(100)
                 end
 
-                for key,val in pairs(weapons) do
-                    for k,v in pairs(self.Config.Weapons) do
-                        if val == k then
-                            self:UnloadWeapons(v)
-                        end
-                    end
-                end
-
-                self:UnloadModels(robbers.Models)
+                JUtils:ReleaseModelTable(robbers.Models)
 
                 Citizen.Wait(60000)
                 self.BeingRobbed = false 
@@ -773,30 +415,224 @@ function JAM_Drugs:HandleRobbing(zone, amount)
     end
 end
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##            Death Checks           ##--
---##                                   ##--
---#######################################--
--------------------------------------------
+function JAM_Drugs:GetClosestNPC()
+    local NPCIgnoreList = { PlayerPedId(), }
+    local playerPos = GetEntityCoords(GetPlayerPed())
+
+    local closestPed,closestDist = ESX.Game.GetClosestPed(playerPos, NPCIgnoreList)
+
+    if closestDist < self.Config.NPCSalesDist then 
+    	self.ClosestPed = closestPed
+    else 
+        self.ClosestPed = false; 
+    end
+end
+
+function JAM_Drugs:DespawnRobbers()
+	if not self.RobberPeds then return; end
+	self.BeingRobbed = false
+	for k,v in pairs(self.RobberPeds) do
+		DeletePed(v)
+	end
+end
+
+function JAM_Drugs:MarkerTeleport(zone, entering)
+	local playerPed = PlayerPedId()
+	if entering then SetEntityCoords(playerPed, zone.Positions.EntryPos, zone.Positions.EntryHeading, false, false, false)
+	else SetEntityCoords(playerPed, zone.Positions.ExitPos, zone.Positions.ExitHeading, false, false, false); end
+end
+
+function JAM_Drugs:HandleZoneSpawn(zone)
+	self.SpawnedPeds = self.SpawnedPeds or {}
+	TriggerServerEvent('JAM_Drugs:SetZonePlayers', nearestZone.ZoneTitle, 1)
+	ESX.TriggerServerCallback('JAM_Drugs:GetZoneData', function(zoneData) 
+		if not zoneData then return; end
+		if zoneData.players > 1 then
+			self:SpawnZoneHeat(zone)
+		else
+			self:SpawnZoneBasic(zone)
+		end
+	end, zone.ZoneTitle)
+end
+
+function JAM_Drugs:HandleZoneDespawn(zone)
+	TriggerServerEvent('JAM_Drugs:SetZonePlayers', nearestZone.ZoneTitle, -1)
+	while self.SpawnedPeds do
+		ESX.TriggerServerCallback('JAM_Drugs:GetZoneData', function(zoneData) 
+			if not zoneData then return; end
+			if zoneData.players == 0 then
+				self:DespawnPeds()
+				self:DespawnObjs()
+			end
+		end, zone.ZoneTitle)
+		Citizen.Wait(5000)
+	end
+end
+
+function JAM_Drugs:DespawnPeds()
+	if not self.SpawnedPeds then return; end
+	for k,v in pairs(self.SpawnedPeds) do		
+        DeletePed(v)
+    end
+	self.SpawnedPeds = false    
+end
+
+function JAM_Drugs:DespawnObjs()
+	if not self.SpawnedObjs then return; end
+	for k,v in pairs(self.SpawnedObjs) do
+		DeleteObject(v)
+	end
+	self.SpawnedObjs = false
+end
+
+function JAM_Drugs:SpawnZoneHeat(zone)
+    if zone.GuardEnt then self:LoadGuardEnts(zone); end
+end
+
+function JAM_Drugs:SpawnZoneBasic(zone)
+    if zone.SalesEnt then self:LoadSalesEnts(zone); end
+    if zone.WorkerEnt then self:LoadWorkerEnts(zone); end
+    if zone.GuardEnt then self:LoadGuardEnts(zone); end
+    if zone.Positions.SafePos then self:LoadSafe(zone); end
+end
+
+function JAM_Drugs:LoadSafe(zone)
+	self.SpawnedObjs = self.SpawnedObjs or {}
+    local safePos = zone.Positions.SafePos
+    local safeObj = JSC:SpawnSafeObject(JSC.SafeObjects, safePos, 0.0)
+    for k,v in pairs(safeObj) do table.insert(self.SpawnedObjs, v); end
+end
+
+function JAM_Drugs:LoadSalesEnts(zone)
+    local sellers = zone.SalesEnt
+
+    JUtils:LoadModelTable(sellers.Models)  
+
+    local randModel = JUtils.GetHashKey(sellers.Models[math.random(1, #sellers.Models)])
+    local randPos = sellers.Positions[math.random(1, #sellers.Positions)]   
+    local weaponHash = JUtils.GetHashKey('WEAPON_COMBATPISTOL')
+    local newPed = CreatePed(sellers.Type, randModel, randPos.xyz, randPos.w, true, false)
+    table.insert(self.SpawnedPeds, newPed)
+
+    SetPedRelationshipGroupHash(newPed, JUtils.GetHashKey(zone.EntSettings.Relationship))
+    SetPedRelationshipGroupDefaultHash(newPed, JUtils.GetHashKey(zone.EntSettings.Relationship))
+    GiveWeaponToPed(newPed, weaponHash, 1000, false, false)
+
+    if sellers.FreezeEnt then
+        FreezeEntityPosition(newPed, true)
+    end
+
+    JUtils:ReleaseModelTable(sellers.Models)
+end
+
+function JAM_Drugs:LoadWorkerEnts(zone)
+    local workers = zone.WorkerEnt
+    local weaponHash = JUtils.GetHashKey('WEAPON_KNIFE')
+
+    JUtils:LoadModelTable(workers.Models)  
+    JUtils:LoadAnimDict(workers.AnimDict)
+
+    for k,v in pairs(workers.Positions) do
+        local randModel = JUtils.GetHashKey(workers.Models[math.random(1, #workers.Models)])             
+        local newPed = CreatePed(workers.Type, randModel, v.xyz, v.w, true, false)
+        local relHash = JUtils.GetHashKey(zone.EntSettings.Relationship)
+        table.insert(self.SpawnedPeds, newPed)
+
+        if type(k) == 'string' then TaskPlayAnim(newPed, workers.AnimDict, k, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0)
+        else TaskPlayAnim(newPed, workers.AnimDict, workers.AnimName, 8.0, 1.0, -1, 1, 1.0, 0, 0, 0); end
+
+        SetPedRelationshipGroupHash(newPed, relHash)
+        SetPedRelationshipGroupDefaultHash(newPed, relHash)
+        GiveWeaponToPed(newPed, weaponHash, 1, false, false)
+    end
+
+    JUtils:ReleaseModelTable(workers.Models)
+    JUtils:ReleaseAnimDict(workers.AnimDict)
+end
+
+function JAM_Drugs:LoadGuardEnts(zone)
+    ESX.TriggerServerCallback('JAM_Drugs:GetHeat', function(heat)
+        local guards = zone.GuardEnt
+
+        JUtils:LoadModelTable(guards.Models)
+
+        local weapons = self:GetEntWeaponTier(heat)
+        local count = 0
+        if heat > 75 then count = -10; end
+
+        local attempt = 0
+        local takenpos = {}
+
+        while count == 0 or count < heat / 20 do
+            local randomPos = guards.Positions[math.random(1, #guards.Positions)] 
+            local posTaken = false
+            for k,v in pairs(takenpos) do 
+                attempt = attempt + 1
+                if v.x == randomPos.x and v.y == randomPos.y and v.z == randomPos.z then 
+                    posTaken = true 
+                end
+            end
+
+            if attempt > count + 1000 then
+                return
+            end
+
+            if not posTaken then
+                count = count + 1
+
+                local randModel = JUtils.GetHashKey(guards.Models[math.random(1, #guards.Models)])
+                local newPed = CreatePed(guards.Type, randModel, randomPos.xyz, randomPos.w, true, false)   
+                local relHash = JUtils.GetHashKey(zone.EntSettings.Relationship)          
+
+                local weaponCategory = math.random(1, #weapons)
+                local randomWeapon
+                for k,v in pairs(JUtils.Weapons) do
+                    if k == weapons[weaponCategory] then 
+                        randomWeapon = v[math.random(1, #v)]
+                    end 
+                end 
+
+                GiveWeaponToPed(newPed, randomWeapon, 1000, true, true)    
+
+                SetPedRelationshipGroupHash(newPed, relHash)
+                SetPedRelationshipGroupDefaultHash(newPed, relHash)
+
+                table.insert(takenpos, randomPos)
+                table.insert(self.SpawnedPeds, newPed)  
+            end
+
+            Citizen.Wait(0)
+        end
+
+        JUtils:ReleaseModelTable(guards.Models)
+    end) 
+end
+
+function JAM_Drugs:GetEntWeaponTier(heat)
+    local weapons = {}
+    if heat >= 75 then
+        table.insert(weapons, 'Shotgun') 
+        table.insert(weapons, 'MG')
+    elseif heat >= 50 then
+        table.insert(weapons, 'SMG')        
+        table.insert(weapons, 'Assault') 
+    elseif heat >= 25 then
+        table.insert(weapons, 'Pistol')
+        table.insert(weapons, 'SMG')  
+    else   
+        table.insert(weapons, 'Pistol')     
+        table.insert(weapons, 'Melee')
+    end
+
+    return weapons
+end
 
 AddEventHandler('esx:onPlayerDeath', function(data)
 	if not JAM_Drugs then return; end
 	if JAM_Drugs.BeingRobbed then 
-		JAM_Drugs.BeingRobbed = false; 
+        JAM_Drugs:DespawnRobbers()
 		TriggerServerEvent('JAM_Drugs:GetRobbed')
-        Citizen.Wait(0)
-        JAM_Drugs.DespawnRobbers()
 	end
 end)
 
--------------------------------------------
---#######################################--
---##                                   ##--
---##           Start 'Er Up            ##--
---##                                   ##--
---#######################################--
--------------------------------------------
-
-Citizen.CreateThread(function(...) JAM_Drugs:ClientStart(...); end)
+Citizen.CreateThread(function() JAM_Drugs:ClientStart(); end)
