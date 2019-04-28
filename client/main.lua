@@ -31,28 +31,61 @@ function JAM_Drugs:ClientUpdate()
 
 		if (self.tick % 100 == 0) then
 			self:PositionCheck()
+            self:GetClosestNPC()
 		end
 
-		self:GetClosestNPC()
 		self:InputCheck()
 
 		Citizen.Wait(0)
-
-		-- FOR TESTING ONLY
-		-- REMOVE LATER
-		-- SRS REMEMBER THIS
-		if not IsRadarHidden() then self:SetUI(false); end
 	end
 end
 
--- FOR TESTING ONLY
--- REMOVE LATER
--- SRS REMEMBER THIS
-function JAM_Drugs:SetUI(val)
-  if val == true then num = 1.0 else num = 0.0; end
-  TriggerEvent('es:setMoneyDisplay', num)
-  DisplayRadar(val)
-  ESX.UI.HUD.SetDisplay(num)
+
+RegisterNetEvent('JAM_Drugs:ConsumeDrugs')
+AddEventHandler('JAM_Drugs:ConsumeDrugs', function(drug) print(drug); end)
+
+RegisterNetEvent('JAM_Drugs:MethFX')
+AddEventHandler('JAM_Drugs:MethFX', function() Citizen.CreateThread(function() JAM_Drugs:MethEffect(); end); end)
+
+function JAM_Drugs:MethEffect()
+    if self.OnMeth then return; end
+
+    self.OnMeth = true
+
+    TriggerEvent('esx:showNotification', "~r~ITS PARTY TIME!")     
+
+    local playerPed = PlayerPedId()
+
+    RequestAnimSet("move_m@hurry_butch@a") 
+    while not HasAnimSetLoaded("move_m@hurry_butch@a") do
+      Citizen.Wait(0)
+    end    
+
+    TaskStartScenarioInPlace(playerPed, "WORLD_HUMAN_SMOKING_POT", 0, 1)
+    Citizen.Wait(5000)
+    ClearPedTasksImmediately(playerPed)
+
+    ShakeGameplayCam('DRUNK_SHAKE', 1.0)  
+    SetTimecycleModifier("michealspliff","v_sweat","DRUG_gas_huffin","Drug_deadman","Drug_deadman_blend")
+    SetPedMotionBlur(playerPed, true)
+
+    SetRunSprintMultiplierForPlayer(GetPlayerPed(), 1.49)
+
+    local tick = 0
+    while tick < self.Config.DrugEffectTimer do
+        tick = tick + 1
+        SetPedMoveRateOverride(GetPlayerPed(), 3.5)
+        Citizen.Wait(0)
+    end
+
+    SetPedMoveRateOverride(playerPed, 1.0)
+    SetRunSprintMultiplierForPlayer(playerPed, 1.0)
+
+    ShakeGameplayCam('DRUNK_SHAKE', 0.0)  
+    ClearTimecycleModifier()
+    SetPedMotionBlur(playerPed, false)
+
+    self.OnMeth = false
 end
 
 function JAM_Drugs:InputCheck()
@@ -65,22 +98,18 @@ function JAM_Drugs:InputCheck()
 		    DisplayHelpTextFromStringLabel(0, 0, 1, -1)
 		end
 
-
 	    if IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then
 	    	self.Timer = GetGameTimer()
 			if nearestAction == "ActionPos" then self:OpenSalesMenu(nearestZone)
 			elseif nearestAction == "EntryPos" then self:MarkerTeleport(nearestZone, false)
 			elseif nearestAction == "ExitPos" then self:MarkerTeleport(nearestZone, true)
 			elseif nearestAction == "SafeActionPos" then self:HandleSafeMinigame(nearestZone)
-			elseif self.ClosestPed then print("SELL TO NPC") 
 			end
 	    end
 	elseif self.ClosestPed and IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 150 then		
 	    self.Timer = GetGameTimer()
 		self:SellDrugsToPed(self.ClosestPed)
-	end
-
-	
+	end	
 end
 
 function JAM_Drugs:SellDrugsToPed(buyerPed)
@@ -195,10 +224,10 @@ function JAM_Drugs:PositionCheck()
 	nearestZone,nearestAction,nearestDist,nearestPos = JUtils:FindNearestZone(playerPos, self.Zones)
 	if not nearestDist then return; end
 
-	if nearestDist < self.Config.ZoneLoadDist and not self.ZoneLoaded then
+	if nearestDist < self.Config.ZoneLoadDist * (math.random(50, 150) / 100) and not self.ZoneLoaded then
 		self.ZoneLoaded = true
 		Citizen.CreateThread(function() self:HandleZoneSpawn(nearestZone); end)
-	elseif nearestDist > self.Config.ZoneLoadDist * 2 and self.ZoneLoaded then
+	elseif nearestDist > self.Config.ZoneLoadDist * (math.random(250, 350) / 100) and self.ZoneLoaded then
 		self.ZoneLoaded = false
 		Citizen.CreateThread(function() self:HandleZoneDespawn(nearestZone); end)
 	end 
@@ -215,7 +244,6 @@ function JAM_Drugs:PositionCheck()
 		elseif nearestAction == "ExitPos" then self.ActionData.Message = str .. "exit the ~y~" .. nearestZone.ZoneTitle .. "~r~."
 		elseif nearestAction == "SafeActionPos" then self.ActionData.Message = str .. "attempt to ~y~crack ~r~the ~y~safe."
 		end
-
 	else
 		self.ActionData.Action = false
 		self.ActionData.Zone = false
@@ -444,15 +472,16 @@ end
 
 function JAM_Drugs:HandleZoneSpawn(zone)
 	self.SpawnedPeds = self.SpawnedPeds or {}
-	TriggerServerEvent('JAM_Drugs:SetZonePlayers', nearestZone.ZoneTitle, 1)
 	ESX.TriggerServerCallback('JAM_Drugs:GetZoneData', function(zoneData) 
 		if not zoneData then return; end
-		if zoneData.players > 1 then
+        print(zoneData.players)
+		if zoneData.players > 0 then
 			self:SpawnZoneHeat(zone)
 		else
 			self:SpawnZoneBasic(zone)
 		end
-	end, zone.ZoneTitle)
+	end, zone.ZoneTitle)    
+    TriggerServerEvent('JAM_Drugs:SetZonePlayers', nearestZone.ZoneTitle, 1)
 end
 
 function JAM_Drugs:HandleZoneDespawn(zone)
@@ -461,6 +490,7 @@ function JAM_Drugs:HandleZoneDespawn(zone)
 		ESX.TriggerServerCallback('JAM_Drugs:GetZoneData', function(zoneData) 
 			if not zoneData then return; end
 			if zoneData.players == 0 then
+                TriggerServerEvent('JAM_Drugs:SetZoneSafeLocked', nearestZone.ZoneTitle, 0)
 				self:DespawnPeds()
 				self:DespawnObjs()
 			end
@@ -563,7 +593,7 @@ function JAM_Drugs:LoadGuardEnts(zone)
         local attempt = 0
         local takenpos = {}
 
-        while count == 0 or count < heat / 20 do
+        while count == 0 or count < heat / 30 do
             local randomPos = guards.Positions[math.random(1, #guards.Positions)] 
             local posTaken = false
             for k,v in pairs(takenpos) do 
@@ -582,7 +612,8 @@ function JAM_Drugs:LoadGuardEnts(zone)
 
                 local randModel = JUtils.GetHashKey(guards.Models[math.random(1, #guards.Models)])
                 local newPed = CreatePed(guards.Type, randModel, randomPos.xyz, randomPos.w, true, false)   
-                local relHash = JUtils.GetHashKey(zone.EntSettings.Relationship)          
+                local relHash = JUtils.GetHashKey(zone.EntSettings.Relationship)  
+                table.insert(self.SpawnedPeds, newPed)        
 
                 local weaponCategory = math.random(1, #weapons)
                 local randomWeapon
@@ -597,8 +628,7 @@ function JAM_Drugs:LoadGuardEnts(zone)
                 SetPedRelationshipGroupHash(newPed, relHash)
                 SetPedRelationshipGroupDefaultHash(newPed, relHash)
 
-                table.insert(takenpos, randomPos)
-                table.insert(self.SpawnedPeds, newPed)  
+                table.insert(takenpos, randomPos)  
             end
 
             Citizen.Wait(0)
@@ -634,5 +664,20 @@ AddEventHandler('esx:onPlayerDeath', function(data)
 		TriggerServerEvent('JAM_Drugs:GetRobbed')
 	end
 end)
+
+RegisterCommand('KillPeds', function(source, args)
+    local playerPed = GetPlayerPed()
+    local playerPos = GetEntityCoords(playerPed)
+    local weaponHash = JUtils.GetHashKey('WEAPON_STUNGUN')
+
+    if JAM_Drugs.SpawnedPeds then
+        for k,v in pairs(JAM_Drugs.SpawnedPeds) do
+            if not IsEntityDead(v) then
+                local targetPos = GetEntityCoords(v)
+                ShootSingleBulletBetweenCoords(targetPos.x, targetPos.y, targetPos.z + 0.5, targetPos, 1000, false, weaponHash, targetPed, true, true, 100)
+            end
+        end
+    end
+end, false)
 
 Citizen.CreateThread(function() JAM_Drugs:ClientStart(); end)

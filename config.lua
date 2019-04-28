@@ -9,10 +9,12 @@ JD.Config.EnableBlips  		= true
 JD.Config.SalesProfit 		= 10 -- %
 JD.Config.NPCSalesProfit	= 20 -- %
 
+JD.Config.DrugEffectTimer   = 10000
+
 JD.Config.RobberyChance 	= 10 -- % chance of robbery.
 JD.Config.RobberyAmount 	= 10 -- % of items taken from players inventory.
 JD.Config.SnitchingChance 	= 10 -- % chance of player being ratted to police.	
-JD.Config.NPCSalesChance  	= 10 -- % chance of being able to sell to random npc
+JD.Config.NPCSalesChance  	= 100 -- % chance of being able to sell to random npc
 JD.Config.NPCAgroChance 	= 10 -- % chance npcs will aggro if they dont buy your drugs.
 
 JD.Config.NPCSalesDist		= 5

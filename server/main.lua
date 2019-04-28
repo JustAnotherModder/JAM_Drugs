@@ -3,17 +3,15 @@ AddEventHandler('onMySQLReady', function(...) JAM_Drugs.SQLReady = true; end)
 function JAM_Drugs:GetESX(obj) ESX = obj; self.ESX = obj; end
 function JAM_Drugs:GetJUtils(obj) JUtils = obj; self.JUtils = obj; end
 
+TriggerEvent('JAM_Utilities:GetSharedObject', function(...) JAM_Drugs:GetJUtils(...); end)
 TriggerEvent('esx:getSharedObject', function(...) JAM_Drugs:GetESX(...); end)	
 
 function JAM_Drugs:ServerStart()
 	-- Comment this out when testing.
-	-- while not JAM_Drugs.SQLReady do
-	-- 	Citizen.Wait(0)
-	-- end
-	-- END COMMENT OUT
-
-	TriggerEvent('JAM_Utilities:GetSharedObject', function(...) JAM_Drugs:GetJUtils(...); end)
-
+	while not JAM_Drugs.SQLReady do
+		Citizen.Wait(0)
+	end
+	
 	self:ResetZones()
 end
 
@@ -59,18 +57,20 @@ AddEventHandler('playerDropped', function(reason)
 	if not ESX then return; end
 	if not JUtils then return; end
 	local xPlayer = ESX.GetPlayerFromId(source)
+	if not xPlayer then return; end
 	local lastPos = xPlayer.getLastPosition()
+	if not lastPos then return; end
 	local posVec = vector3(lastPos.x, lastPos.y, lastPos.z)
 
-	local nearest,nearestDist,nearestCoords = JUtils:FindNearestZone(posVec, JAM_Drugs.Zones)
+	local nearestZone,nearestAction,nearestDist,nearestCoords = JUtils:FindNearestZone(posVec, JAM_Drugs.Zones)
 
 	if nearestDist and nearestDist < JAM_Drugs.Config.ZoneLoadDist then
-		local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = nearest.ZoneTitle})
+		local data = MySQL.Sync.fetchAll("SELECT * FROM jam_drugzones WHERE zone=@zone",{['@zone'] = nearestZone.ZoneTitle})
 		if data[1].players <= 1 then 
-			TriggerEvent('JAM_Drugs:SetZoneSafeLocked', nearest.ZoneTitle, 0)
+			TriggerEvent('JAM_Drugs:SetZoneSafeLocked', nearestZone.ZoneTitle, 0)
 		end
 
-		TriggerEvent('JAM_Drugs:SetZonePlayers', nearest.ZoneTitle, -1)
+		TriggerEvent('JAM_Drugs:SetZonePlayers', nearestZone.ZoneTitle, -1)
 	end	
 end)
 
@@ -200,4 +200,14 @@ ESX.RegisterServerCallback('JAM_Drugs:GetAllDrugCount', function(source, cb)
 	end
 	if didFill then	cb(playerDrugs)
 	else cb(false); end
+end)
+
+ESX.RegisterUsableItem('jammeth', function(source)
+	local xPlayer = ESX.GetPlayerFromId(source)
+ 	TriggerClientEvent('JAM_Drugs:ConsumeDrugs', source, JAM_Drugs.Items.Meth)
+end)
+
+ESX.RegisterUsableItem('jamcocaine', function(source)
+	local xPlayer = ESX.GetPlayerFromId(source)
+ 	TriggerClientEvent('JAM_Drugs:ConsumeDrugs', source, JAM_Drugs.Items.Cocaine)
 end)
