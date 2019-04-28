@@ -1,5 +1,6 @@
 # JAM_Drugs
 
+- Thoroughly unfinished. Probably won't work for you.
 - No support, don't post an issue.
 - If you do try and install this, you're going to need the following:
 - https://github.com/JustAnotherModder/JAM_Utilities
