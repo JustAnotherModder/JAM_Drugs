@@ -3,9 +3,9 @@
 JAM_Drugs is a "work-in-progress" mod that reworks the aspect of drug running in ESX. If you wish to use this in its current state, any bugs you encounter are yours to REPORT and FIX. If you don't already have the correct IPL's loaded for the drug lab interiors (and biker clubhouse interiors) then you'll want to use the iplList provided with the fivem-ipl mod (link in requirements).
 
 # Requirements
-https://github.com/JustAnotherModder/JAM/releases
-https://github.com/JustAnotherModder/JAM_SafeCracker/releases
-https://github.com/ESX-PUBLIC/fivem-ipl
+- https://github.com/JustAnotherModder/JAM/releases
+- https://github.com/JustAnotherModder/JAM_SafeCracker/releases
+- https://github.com/ESX-PUBLIC/fivem-ipl
 You will also need to download any/all dependencies for the required mods above. Make sure you have all of those working correctly before even attempting to go any further.
 
 # Installation
