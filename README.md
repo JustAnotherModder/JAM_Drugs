@@ -1,12 +1,44 @@
 # JAM_Drugs
 
-- Thoroughly unfinished. Probably won't work for you.
-- No support, don't post an issue.
-- If you do try and install this, you're going to need the following:
-- https://github.com/JustAnotherModder/JAM_Utilities
-- https://github.com/JustAnotherModder/JAM_SafeCracker
-- IPList must be used with FiveM-IPL for desired interior props.
-- No sql table provided. No support. Don't post an issue.
+JAM_Drugs is a "work-in-progress" mod that reworks the aspect of drug running in ESX. If you wish to use this in its current state, any bugs you encounter are yours to REPORT and FIX. If you don't already have the correct IPL's loaded for the drug lab interiors (and biker clubhouse interiors) then you'll want to use the iplList provided with the fivem-ipl mod (link in requirements).
+
+# Requirements
+https://github.com/JustAnotherModder/JAM/releases
+https://github.com/JustAnotherModder/JAM_SafeCracker/releases
+https://github.com/ESX-PUBLIC/fivem-ipl
+You will also need to download any/all dependencies for the required mods above. Make sure you have all of those working correctly before even attempting to go any further.
+
+# Installation
+- Import `JAM_DrugZones.sql` into your database.
+- Import `JAM_Drugs.sql` into your database.
+- Download the zip from the repo above.
+- Extract the `JAM_Drugs` folder into your `JAM` folder, inside of the `resources` directory.
+- Inside of your `JAM` folder, edit the `__resource.lua` file, and add the files to their respective locations. Example:
+
+```
+client_scripts {
+	'JAM_Main.lua',
+	'JAM_Client.lua',
+	'JAM_Utilities.lua',
+
+	-- Drugs
+	'JAM_Drugs/JAM_Drugs_Config.lua',
+	'JAM_Drugs/JAM_Drugs_Client.lua',
+}
+
+server_scripts {	
+	'JAM_Main.lua',
+	'JAM_Server.lua',
+	'JAM_Utilities.lua',
+
+	-- MySQL
+	'@mysql-async/lib/MySQL.lua',
+
+	-- Drugs
+	'JAM_Drugs/JAM_Drugs_Config.lua',
+	'JAM_Drugs/JAM_Drugs_Client.lua',
+}
+```
 
 # SCREENSHOTS
 <details>
@@ -27,8 +59,6 @@
 ![alttext](https://i.imgur.com/jQORGS8.jpg)
 </details>
 
-
-
-# DISCLAIMER
-- Any and all improvements must be sent back to the author (me).
+# NOTES
+- Any and all improvements must be sent back to the author (me), here on github.
 - No support. Don't post an issue.
