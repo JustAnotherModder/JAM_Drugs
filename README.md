@@ -6,7 +6,7 @@ JAM_Drugs is a "work-in-progress" mod that reworks the aspect of drug running in
 - https://github.com/JustAnotherModder/JAM/releases
 - https://github.com/JustAnotherModder/JAM_SafeCracker/releases
 - https://github.com/ESX-PUBLIC/fivem-ipl
-You will also need to download any/all dependencies for the required mods above. Make sure you have all of those working correctly before even attempting to go any further.
+<br/>You will also need to download any/all dependencies for the required mods above. Make sure you have all of those working correctly before even attempting to go any further.
 
 # Installation
 - Import `JAM_DrugZones.sql` into your database.
