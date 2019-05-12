@@ -749,7 +749,7 @@ function JDGS:LoadGuardEnts(zone, modifier)
                     local closestPed = ESX.Game.GetClosestPed(randomPos.xyz)
                     local closestCoords = GetEntityCoords(closestPed)
                     local dist = JUtils:GetVecDist(randomPos.xyz, closestCoords)
-                    if dist < 2.0 then posTaken = true; print("DUPE:",dist); end
+                    if dist < 2.0 then posTaken = true; end
                 end
             end
 
