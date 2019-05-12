@@ -6,6 +6,7 @@ JAM_Drugs is a "work-in-progress" mod that reworks the aspect of drug running in
 - https://github.com/JustAnotherModder/JAM/releases
 - https://github.com/JustAnotherModder/JAM_SafeCracker/releases
 - https://github.com/ESX-PUBLIC/fivem-ipl
+- You need GC-Phone if you want to use "snitching" notifications. Also uncomment the HandleSnitching function in JAM_Drugs_Client.lua.
 <br/>You will also need to download any/all dependencies for the required mods above. Make sure you have all of those working correctly before even attempting to go any further.
 
 # Installation
