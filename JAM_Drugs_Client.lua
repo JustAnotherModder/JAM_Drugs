@@ -136,6 +136,51 @@ AddEventHandler('JDGS:ConsumeDrugs', function(drug)
     JDGS.UnderTheInfluence = false
 end)
 
+RegisterNetEvent('JDGS:MethFX')
+AddEventHandler('JDGS:MethFX', function() Citizen.CreateThread(function() JDGS:MethEffect(); end); end)
+
+function JDGS:MethEffect()
+    if self.OnMeth then return; end
+
+    self.OnMeth = true
+
+    TriggerEvent('esx:showNotification', "~r~ITS PARTY TIME!")     
+
+    local playerPed = PlayerPedId()
+
+    RequestAnimSet("move_m@hurry_butch@a") 
+    while not HasAnimSetLoaded("move_m@hurry_butch@a") do
+      Citizen.Wait(0)
+    end    
+
+    TaskStartScenarioInPlace(playerPed, "WORLD_HUMAN_SMOKING_POT", 0, 1)
+    Citizen.Wait(5000)
+    ClearPedTasksImmediately(playerPed)
+
+    ShakeGameplayCam('DRUNK_SHAKE', 1.0)  
+    SetTimecycleModifier("michealspliff","v_sweat","DRUG_gas_huffin","Drug_deadman","Drug_deadman_blend")
+    SetPedMotionBlur(playerPed, true)
+
+    SetRunSprintMultiplierForPlayer(GetPlayerPed(PlayerId()), 1.49)
+
+    local tick = 0
+    while tick < self.Config.DrugEffectTimer do
+        tick = tick + 1
+        SetPedMoveRateOverride(GetPlayerPed(PlayerId()), 3.5)
+        Citizen.Wait(0)
+    end
+
+    SetPedMoveRateOverride(playerPed, 1.0)
+    SetRunSprintMultiplierForPlayer(playerPed, 1.0)
+
+    ShakeGameplayCam('DRUNK_SHAKE', 0.0)  
+    ClearTimecycleModifier()
+    SetPedMotionBlur(playerPed, false)
+
+    self.OnMeth = false
+end
+
+
 function JDGS:RequestNetworkControl(entity,waitForControl)
 
     if    not entity  or  not DoesEntityExist(entity)  then  return false,0  ; end
@@ -288,8 +333,8 @@ function JDGS:HandleSafeMinigame(zone)
 
         local peds = ESX.Game.GetPeds()
         for k,v in pairs(peds) do 
-            for key,val in pairs(self.SpawnedPeds) do 
-                if JUtils.GetHashKey(val) == v or JUtils.GetHashKey(val) == (v%0x100000000) then
+            for key,val in pairs(zone.GuardEnt.Models) do 
+                if JUtils.GetHashKey(val) == v or JUtils.GetHashKey(val) == (v % 0x100000000) then
                     if not IsEntityDead(v) and not IsPedInCombat(v, playerPed) then
                         TaskCombatPed(v, playerPed, 0, 16)
                     end
@@ -436,14 +481,14 @@ function JDGS:SellDrugs(zone, amount)
 end
 
 function JDGS:HandleSnitching(alertPosition)
---    local plyPed = PlayerPedId()
---    local plyPos = GetEntityCoords(plyPed)
---    local alertMsg = 'Someone has snitched on a drug deal.'
---    if self.ZoneLoaded and self.ZoneLoaded.Positions.EntryPos then
---        plyPos = self.ZoneLoaded.Positions.EntryPos
---    end
+    -- local plyPed = PlayerPedId()
+    -- local plyPos = GetEntityCoords(plyPed)
+    -- local alertMsg = 'Someone has snitched on a drug deal.'
+    -- if self.ZoneLoaded and self.ZoneLoaded.Positions.EntryPos then
+    --     plyPos = self.ZoneLoaded.Positions.EntryPos
+    -- end
 
---    TriggerServerEvent('esx_addons_gcphone:startCall', 'police', alertMsg, plyPos)
+    -- TriggerServerEvent('esx_addons_gcphone:startCall', 'police', alertMsg, plyPos)
 end
 
 function JDGS:HandleRobbing(zone, amount)      
@@ -543,6 +588,14 @@ function JDGS:GetClosestNPC()
     end
 end
 
+function JDGS:DespawnRobbers()
+    if not self.RobberPeds then return; end
+    self.BeingRobbed = false
+    for k,v in pairs(self.RobberPeds) do
+        DeletePed(v)
+    end
+end
+
 function JDGS:MarkerTeleport(zone, entering)
     local playerPed = PlayerPedId()
     if entering then
@@ -574,18 +627,6 @@ function JDGS:HandleZoneSpawn(zone)
     TriggerServerEvent('JDGS:SetZonePlayers', zone.ZoneTitle, 1)
 end
 
-function JDGS:SpawnZoneBasic(zone)
-    if zone.SalesEnt then self:LoadSalesEnts(zone); end
-    if zone.WorkerEnt then self:LoadWorkerEnts(zone); end
-    if zone.GuardEnt then self:LoadGuardEnts(zone, 1); end
-    if zone.Positions.SafePos then self:LoadSafe(zone); end
-    if zone.Vehicles then self:LoadVehicles(zone); end
-end
-
-function JDGS:SpawnZoneHeat(zone)
-    if zone.GuardEnt then self:LoadGuardEnts(zone, 0.5); end
-end
-
 function JDGS:HandleZoneDespawn(zone)
     self.ZoneLoaded = false
     self.SafeActive = false
@@ -607,14 +648,6 @@ function JDGS:HandleZoneDespawn(zone)
             Citizen.Wait(5000)
         end
     end)
-end
-
-function JDGS:DespawnRobbers()
-    if not self.RobberPeds then return; end
-    self.BeingRobbed = false
-    for k,v in pairs(self.RobberPeds) do
-        DeletePed(v)
-    end
 end
 
 function JDGS:DespawnPeds()
@@ -641,6 +674,18 @@ function JDGS:DespawnVehicles()
         DeleteVehicle(v)
     end
     self.SpawnedVehicles = false
+end
+
+function JDGS:SpawnZoneHeat(zone)
+    if zone.GuardEnt then self:LoadGuardEnts(zone, 0.5); end
+end
+
+function JDGS:SpawnZoneBasic(zone)
+    if zone.SalesEnt then self:LoadSalesEnts(zone); end
+    if zone.WorkerEnt then self:LoadWorkerEnts(zone); end
+    if zone.GuardEnt then self:LoadGuardEnts(zone, 1); end
+    if zone.Positions.SafePos then self:LoadSafe(zone); end
+    if zone.Vehicles then self:LoadVehicles(zone); end
 end
 
 function JDGS:LoadVehicles(zone)
