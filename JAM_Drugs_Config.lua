@@ -61,10 +61,10 @@ JDGS.Zones.MethLab = {
 		ExitHeading		= 277.70,
 		EntryPos 		= vector3( 201.85, 2462.02, 54.50 ),
 		ExitPos 		= vector3( 997.00, -3200.71, -37.50 ),
-		ActionPos	 	= vector3( 1002.16, -3195.85, -40.0 ),
+		ActionPos	 	= vector3( 1002.55, -3195.75, -39.0 ),
 
 		SafePos			= vector3( 1012.10, -3194.40, -39.1 ),
-		SafeActionPos	= vector3( 1012.15, -3195.35, -40.0 ),
+		SafeActionPos	= vector3( 1011.77, -3195.21, -39.0 ),
 	},
 
 	SafeRewards	= { 
@@ -99,9 +99,10 @@ JDGS.Zones.MethLab = {
 		Type = 27,
 		Models = { 'mp_f_meth_01', "mp_m_meth_01" },
 		AnimDict = 'anim@amb@business@meth@meth_monitoring_cooking@cooking@',
+		FreezeEnt = true,
 
 		Positions = { 	
-			["base_idle_tank_cooker"] = vector4( 1005.80, -3200.38, -39.40, 175.0 ),
+			["base_idle_tank_cooker"] = vector4( 1005.85, -3200.40, -39.50, 175.0 ),
 			["base_idle_tank_penci"] = vector4( 1009.80, -3196.78, -40.0, 165.0 ),
 		},
 	},
@@ -326,7 +327,7 @@ JDGS.Zones.CocaineSales = {
 	},
 
 	Vehicles = {
-		Models = { "gburrito", "zombieb", "sanctus", "daemon", "gargoyle", "zombiea", "avarus", "coquette3", "trophytruck2", "sandking", "tampa2", "coquette2", "banshee2", "nh2r", "r1", },
+		Models = { "gburrito", "zombieb", "sanctus", "daemon", "gargoyle", "zombiea", "avarus", "coquette3", "trophytruck2", "sandking", "tampa2", "coquette2", "banshee2" },
 		Positions = { 	
 			vector4( 1109.27, -3162.82, -37.52, 0.0 ),						
 			vector4( 1102.25, -3156.99, -37.52, 270.0 ),				

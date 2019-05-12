@@ -3,33 +3,33 @@ local JSC = JAM.SafeCracker
 
 function JDGS:ClientStart()
     if not self or not ESX then return; end
-	while not ESX.IsPlayerLoaded() do
-		Citizen.Wait(0)
-	end
+    while not ESX.IsPlayerLoaded() do
+        Citizen.Wait(0)
+    end
 
-	self:ClientUpdate()
+    self:ClientUpdate()
 end
 
 function JDGS:ClientUpdate()
-	while true do
-		self.tick = (self.tick or 0) + 1
+    while true do
+        self.tick = (self.tick or 0) + 1
 
-		if (self.tick % 100 == 0) then
-			self:PositionCheck()
+        if (self.tick % 100 == 0) then
+            self:PositionCheck()
             self:GetClosestNPC()
             self:VehicleCheck()
             self:EntityCheck()
-		end
-		self:InputCheck()
+        end
+        self:InputCheck()
 
-		Citizen.Wait(0)
-	end
+        Citizen.Wait(0)
+    end
 end
 
 function JDGS:VehicleCheck()
     if not self or not self.SpawnedVehicles or not self.SpawnedPeds then return; end
 
-    local playerPed = GetPlayerPed()
+    local playerPed = GetPlayerPed(PlayerId())
     local lastVeh = GetLastDrivenVehicle(playerPed)
 
     if lastVeh then
@@ -63,7 +63,7 @@ AddEventHandler('JDGS:ConsumeDrugs', function(drug)
     if JDGS.UnderTheInfluence then return; end
 
     local Timer = GetGameTimer()    
-    local plyPed = GetPlayerPed()
+    local plyPed = GetPlayerPed(PlayerId())
     local maxHp = GetEntityMaxHealth(plyPed)
     local tick = 0.0
 
@@ -82,7 +82,7 @@ AddEventHandler('JDGS:ConsumeDrugs', function(drug)
             tick = tick + 0.001
             tick = math.min(1.0, tick)
 
-            SetPedMoveRateOverride(GetPlayerPed(), math.min(1.4, 1.0 + tick))
+            SetPedMoveRateOverride(GetPlayerPed(PlayerId()), math.min(1.4, 1.0 + tick))
             Citizen.Wait(0)
         end
     end
@@ -99,7 +99,7 @@ AddEventHandler('JDGS:ConsumeDrugs', function(drug)
             tick = tick + 0.001
             tick = math.min(1.0, tick)
 
-            SetPedMoveRateOverride(GetPlayerPed(), math.min(1.2, 1.0 + tick))
+            SetPedMoveRateOverride(GetPlayerPed(PlayerId()), math.min(1.2, 1.0 + tick))
             Citizen.Wait(0)
         end
     end
@@ -113,7 +113,7 @@ AddEventHandler('JDGS:ConsumeDrugs', function(drug)
             tick = tick + 0.001
             tick = math.min(1.0, tick)
 
-            SetPedMoveRateOverride(GetPlayerPed(), 0.8)
+            SetPedMoveRateOverride(GetPlayerPed(PlayerId()), 0.8)
             Citizen.Wait(0)
         end
     end
@@ -161,12 +161,12 @@ function JDGS:MethEffect()
     SetTimecycleModifier("michealspliff","v_sweat","DRUG_gas_huffin","Drug_deadman","Drug_deadman_blend")
     SetPedMotionBlur(playerPed, true)
 
-    SetRunSprintMultiplierForPlayer(GetPlayerPed(), 1.49)
+    SetRunSprintMultiplierForPlayer(GetPlayerPed(PlayerId()), 1.49)
 
     local tick = 0
     while tick < self.Config.DrugEffectTimer do
         tick = tick + 1
-        SetPedMoveRateOverride(GetPlayerPed(), 3.5)
+        SetPedMoveRateOverride(GetPlayerPed(PlayerId()), 3.5)
         Citizen.Wait(0)
     end
 
@@ -181,29 +181,53 @@ function JDGS:MethEffect()
 end
 
 
+function JDGS:RequestNetworkControl(entity,waitForControl)
+
+    if    not entity  or  not DoesEntityExist(entity)  then  return false,0  ; end
+    local   netID = NetworkGetNetworkIdFromEntity(entity)%0x100000000
+    if    not netID  or  netID < 1  then  return false,0  end
+    if    not NetworkDoesEntityExistWithNetworkId(netID)  then return false,0 ; end
+    NetworkRequestControlOfNetworkId(netID)
+    local tick = 0
+    if    waitForControl
+    then  
+        while not NetworkHasControlOfNetworkId(netID)  and  tick < 300
+        do
+            Citizen.Wait(0)
+
+            tick = tick + 1
+            NetworkRequestControlOfNetworkId(netID)
+            if    ( NetworkHasControlOfNetworkId(netID) == false )
+            and   ( tick < 300 )
+            then  Citizen.Wait(50)
+            end
+        end
+    end
+    return NetworkHasControlOfNetworkId(netID),netID
+end
 
 function JDGS:InputCheck()
-	if not self.ActionData then return; end
-	self.Timer = self.Timer or 0
-	if nearestDist < self.Config.ActionDist then 
-		if self.ActionData.Message then
-		    SetTextComponentFormat('STRING') 
-		    AddTextComponentString(self.ActionData.Message)
-		    DisplayHelpTextFromStringLabel(0, 0, 1, -1)
-		end
+    if not self.ActionData then return; end
+    self.Timer = self.Timer or 0
+    if nearestDist < self.Config.ActionDist then 
+        if self.ActionData.Message then
+            SetTextComponentFormat('STRING') 
+            AddTextComponentString(self.ActionData.Message)
+            DisplayHelpTextFromStringLabel(0, 0, 1, -1)
+        end
 
-	    if IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 1000 then
-	    	self.Timer = GetGameTimer()
-			if nearestAction == "ActionPos" then self:OpenSalesMenu(nearestZone)
-			elseif nearestAction == "EntryPos" then self:MarkerTeleport(nearestZone, false)
-			elseif nearestAction == "ExitPos" then self:MarkerTeleport(nearestZone, true)
-			elseif nearestAction == "SafeActionPos" then self:HandleSafeMinigame(nearestZone)
-			end
-	    end
-	elseif self.ClosestPed and IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 1000 then		
-	    self.Timer = GetGameTimer()
-		self:SellDrugsToPed(self.ClosestPed)
-	end	
+        if IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 1000 then
+            self.Timer = GetGameTimer()
+            if nearestAction == "ActionPos" then self:OpenSalesMenu(nearestZone)
+            elseif nearestAction == "EntryPos" then self:MarkerTeleport(nearestZone, false)
+            elseif nearestAction == "ExitPos" then self:MarkerTeleport(nearestZone, true)
+            elseif nearestAction == "SafeActionPos" then self:HandleSafeMinigame(nearestZone)
+            end
+        end
+    elseif self.ClosestPed and IsControlPressed(0, JUtils.Keys['E']) and (GetGameTimer() - self.Timer) > 1000 then      
+        self.Timer = GetGameTimer()
+        self:SellDrugsToPed(self.ClosestPed)
+    end 
 end
 
 function JDGS:SellDrugsToPed(buyerPed)
@@ -221,7 +245,7 @@ function JDGS:SellDrugsToPed(buyerPed)
         if math.random(1, 100) < self.Config.SnitchingChance then
             self:HandleSnitching(GetEntityCoords(PlayerPedId()))
         elseif math.random(1,100) < self.Config.NPCAgroChance then
-        	local playerPed = PlayerPedId()
+            local playerPed = PlayerPedId()
             if not IsPedInCombat(v, playerPed) then
                 TaskCombatPed(v, playerPed, 0, 16)
             end
@@ -257,7 +281,7 @@ function JDGS:SellDrugsToPed(buyerPed)
         self.keyboardActive = true
 
         DisplayOnscreenKeyboard( 0, "","", (maxAmount or drugAmount), "", "", "", 30 )
-        local plyPed = GetPlayerPed()
+        local plyPed = GetPlayerPed(PlayerId())
         TaskTurnPedToFaceEntity(buyerPed, plyPed, -1)
    
         while self.keyboardActive do    
@@ -295,78 +319,83 @@ function JDGS:SellDrugsToPed(buyerPed)
 end
 
 function JDGS:HandleSafeMinigame(zone)
-	ESX.TriggerServerCallback('JDGS:GetZoneData', function(zoneData) 
-		if zoneData.safelockout == 1 then TriggerEvent('esx:showNotification', "~r~Somebody is already attempting to crack this safe."); return; end
-		if zoneData.safelockout == 2 then TriggerEvent('esx:showNotification', "~r~The failsafe for this vault has already been triggered."); return; end
-		if zoneData.safelockout >= 3 then TriggerEvent('esx:showNotification', "~r~Somebody has already cracked this safe."); return; end
-		TriggerServerEvent('JDGS:SetZoneSafeLocked', zone.ZoneTitle, 1)
+    ESX.TriggerServerCallback('JDGS:GetZoneData', function(zoneData) 
+        if zoneData.safelockout == 1 then TriggerEvent('esx:showNotification', "~r~Somebody is already attempting to crack this safe."); return; end
+        if zoneData.safelockout == 2 then TriggerEvent('esx:showNotification', "~r~The failsafe for this vault has already been triggered."); return; end
+        if zoneData.safelockout >= 3 then TriggerEvent('esx:showNotification', "~r~Somebody has already cracked this safe."); return; end
+        TriggerServerEvent('JDGS:SetZoneSafeLocked', zone.ZoneTitle, 1)
         self.CanDoAction = false
+        self.SafeActive = true
 
-		TriggerEvent('JSC:StartMinigame', zone.SafeRewards)
+        TriggerEvent('JSC:StartMinigame', zone.SafeRewards)
 
-		local playerPed = PlayerPedId()
-	    if self.SpawnedPeds and #self.SpawnedPeds > 0 then
-	        for k,v in pairs(self.SpawnedPeds) do
-	            if not IsPedInCombat(v, playerPed) then
-	                TaskCombatPed(v, playerPed, 0, 16)
-	            end
-	        end
-	    end 
-	end, zone.ZoneTitle)
+        local playerPed = GetPlayerPed(PlayerId())
+
+        local peds = ESX.Game.GetPeds()
+        for k,v in pairs(peds) do 
+            for key,val in pairs(self.SpawnedPeds) do 
+                if JUtils.GetHashKey(val) == v or JUtils.GetHashKey(val) == (v%0x100000000) then
+                    if not IsEntityDead(v) and not IsPedInCombat(v, playerPed) then
+                        TaskCombatPed(v, playerPed, 0, 16)
+                    end
+                end 
+            end 
+        end
+    end, zone.ZoneTitle)
 end
 
 function JDGS:PositionCheck()
-	local playerPos = GetEntityCoords(PlayerPedId())
-	nearestZone,nearestAction,nearestDist,nearestPos = JUtils:FindNearestZone(playerPos, self.Zones)
-	if not nearestDist then return; end
+    local playerPos = GetEntityCoords(PlayerPedId())
+    nearestZone,nearestAction,nearestDist,nearestPos = JUtils:FindNearestZone(playerPos, self.Zones)
+    if not nearestDist then return; end
 
-	if nearestDist < self.Config.ZoneLoadDist * (math.random(50, 150) / 100) and not self.ZoneLoaded then
-		self.ZoneLoaded = nearestZone
-		Citizen.CreateThread(function() self:HandleZoneSpawn(nearestZone); end)
-	elseif nearestDist > self.Config.ZoneLoadDist * (math.random(250, 350) / 100) and self.ZoneLoaded then
-		self.ZoneLoaded = false
-		Citizen.CreateThread(function() self:HandleZoneDespawn(nearestZone); end)
-	end 
+    if nearestDist < self.Config.ZoneLoadDist * (math.random(50, 150) / 100) and not self.ZoneLoaded then
+        self.ZoneLoaded = nearestZone
+        Citizen.CreateThread(function() self:HandleZoneSpawn(nearestZone); end)
+    elseif nearestDist > self.Config.ZoneLoadDist * (math.random(250, 350) / 100) and self.ZoneLoaded then
+        Citizen.CreateThread(function() self:HandleZoneDespawn(self.ZoneLoaded); end)
+    end 
 
-	self.ActionData = self.ActionData or {}
+    self.ActionData = self.ActionData or {}
 
-	if nearestDist < self.Config.ActionDist then
-		self.ActionData.Action = nearestAction
-		self.ActionData.Zone = nearestZone
+    if nearestDist < self.Config.ActionDist then
+        self.ActionData.Action = nearestAction
+        self.ActionData.Zone = nearestZone
 
-		local str = "~r~Press ~INPUT_PICKUP~ to "
-		if nearestAction == "ActionPos" and self.CanDoAction then self.ActionData.Message = str .. (nearestZone.ActionType:sub(1,1):lower() .. nearestZone.ActionType:sub(2)) .. " ~y~" .. nearestZone.DrugTitle .. "~r~."
-		elseif nearestAction == "EntryPos" then self.ActionData.Message = str .. "enter the ~y~" .. nearestZone.ZoneTitle .. "~r~."
-		elseif nearestAction == "ExitPos" then self.ActionData.Message = str .. "exit the ~y~" .. nearestZone.ZoneTitle .. "~r~."
-		elseif nearestAction == "SafeActionPos" then self.ActionData.Message = str .. "attempt to ~y~crack ~r~the ~y~safe."
-		end
-	else
-		self.ActionData.Action = false
-		self.ActionData.Zone = false
-		self.ActionData.Message = false
-	end
+        local str = "~r~Press ~INPUT_PICKUP~ to "
+        if nearestAction == "ActionPos" and self.CanDoAction then self.ActionData.Message = str .. (nearestZone.ActionType:sub(1,1):lower() .. nearestZone.ActionType:sub(2)) .. " ~y~" .. nearestZone.DrugTitle .. "~r~."
+        elseif nearestAction == "EntryPos" then self.ActionData.Message = str .. "enter the ~y~" .. nearestZone.ZoneTitle .. "~r~."
+        elseif nearestAction == "ExitPos" then self.ActionData.Message = str .. "exit the ~y~" .. nearestZone.ZoneTitle .. "~r~."
+        elseif nearestAction == "SafeActionPos" then self.ActionData.Message = str .. "attempt to ~y~crack ~r~the ~y~safe."
+        end
+    else
+        self.ActionData.Action = false
+        self.ActionData.Zone = false
+        self.ActionData.Message = false
+        if self.SafeActive then TriggerEvent('JSC:EndGame'); self.SafeActive = false; end
+    end
 
     if self.Config.EnableBlips and nearestDist < nearestZone.ViewRadius and not self.ActiveBlip then
-		if nearestZone.Positions.EntryPos then blip = AddBlipForCoord(nearestZone.Positions.EntryPos)
-		else blip = AddBlipForCoord(nearestZone.Positions.ActionPos); end
+        if nearestZone.Positions.EntryPos then blip = AddBlipForCoord(nearestZone.Positions.EntryPos)
+        else blip = AddBlipForCoord(nearestZone.Positions.ActionPos); end
 
-		SetBlipSprite			(blip, nearestZone.BlipSprite)
-		SetBlipColour			(blip, nearestZone.BlipColor)
-		SetBlipDisplay			(blip, nearestZone.BlipDisplay)
-		SetBlipScale			(blip, nearestZone.BlipScale)
-		SetBlipAsShortRange		(blip, true)
+        SetBlipSprite           (blip, nearestZone.BlipSprite)
+        SetBlipColour           (blip, nearestZone.BlipColor)
+        SetBlipDisplay          (blip, nearestZone.BlipDisplay)
+        SetBlipScale            (blip, nearestZone.BlipScale)
+        SetBlipAsShortRange     (blip, true)
 
-		BeginTextCommandSetBlipName	("STRING")
-		AddTextComponentString		(nearestZone.ZoneTitle)
-		EndTextCommandSetBlipName	(blip)
+        BeginTextCommandSetBlipName ("STRING")
+        AddTextComponentString      (nearestZone.ZoneTitle)
+        EndTextCommandSetBlipName   (blip)
 
-		self.ActiveBlip = blip
+        self.ActiveBlip = blip
 
-	elseif self.Config.EnableBlips and nearestDist > nearestZone.ViewRadius and self.ActiveBlip then
-		local blip = self.ActiveBlip
-		self.ActiveBlip = nil
-		RemoveBlip(blip)
-	end		
+    elseif self.Config.EnableBlips and nearestDist > nearestZone.ViewRadius and self.ActiveBlip then
+        local blip = self.ActiveBlip
+        self.ActiveBlip = nil
+        RemoveBlip(blip)
+    end     
 end
 
 function JDGS:OpenSalesMenu(zone)
@@ -478,13 +507,13 @@ function JDGS:HandleRobbing(zone, amount)
                 local robbers = zone.RobberEnt
                 local weapons = self:GetEntWeaponTier(heat)
 
-            	JUtils:LoadModelTable(robbers.Models)
+                JUtils:LoadModelTable(robbers.Models)
 
                 local count = 0
                 local attempt = 0
                 local takenpos = {}
 
-                if heat > 75 then count = -10; end
+                --if heat > 75 then count = -5; end
 
                 while count == 0 or count < (heat / 20) do
                     local randomPos = robbers.Positions[math.random(1, #robbers.Positions)] 
@@ -506,7 +535,10 @@ function JDGS:HandleRobbing(zone, amount)
                         count = count + 1
 
                         local randModel = JUtils.GetHashKey(robbers.Models[math.random(1, #robbers.Models)])
-                        local newPed = CreatePed(robbers.Type, randModel, randomPos.xyz, randomPos.w, true, false)             
+                        local newPed = CreatePed(robbers.Type, randModel, randomPos.xyz, randomPos.w, true, false)         
+                        Citizen.Wait(1)
+                        self:RequestNetworkControl(newPed, true) 
+                        SetEntityLoadCollisionFlag(newPed, true)
 
                         local weaponCategory = math.random(1, #weapons)
                         local randomWeapon
@@ -545,80 +577,95 @@ end
 
 function JDGS:GetClosestNPC()
     local NPCIgnoreList = { PlayerPedId(), }
-    local playerPos = GetEntityCoords(GetPlayerPed())
+    local playerPos = GetEntityCoords(GetPlayerPed(PlayerId()))
 
     local closestPed,closestDist = ESX.Game.GetClosestPed(playerPos, NPCIgnoreList)
 
     if closestDist < self.Config.NPCSalesDist then 
-    	self.ClosestPed = closestPed
+        self.ClosestPed = closestPed
     else 
         self.ClosestPed = false; 
     end
 end
 
 function JDGS:DespawnRobbers()
-	if not self.RobberPeds then return; end
-	self.BeingRobbed = false
-	for k,v in pairs(self.RobberPeds) do
-		DeletePed(v)
-	end
+    if not self.RobberPeds then return; end
+    self.BeingRobbed = false
+    for k,v in pairs(self.RobberPeds) do
+        DeletePed(v)
+    end
 end
 
 function JDGS:MarkerTeleport(zone, entering)
-	local playerPed = PlayerPedId()
-	if entering then SetEntityCoords(playerPed, zone.Positions.EntryPos, zone.Positions.EntryHeading, false, false, false)
-	else SetEntityCoords(playerPed, zone.Positions.ExitPos, zone.Positions.ExitHeading, false, false, false); end
+    local playerPed = PlayerPedId()
+    if entering then
+        SetEntityCoords(playerPed, zone.Positions.EntryPos, zone.Positions.EntryHeading, false, false, false)
+    else 
+        SetEntityCoords(playerPed, zone.Positions.ExitPos, zone.Positions.ExitHeading, false, false, false)
+        if self.SpawnedPeds and type(self.SpawnedPeds) == "table" then 
+            for k,v in pairs(self.SpawnedPeds) do 
+                FreezeEntityPosition(v, false)
+            end
+        end 
+    end
 end
 
 function JDGS:HandleZoneSpawn(zone)
-    print("JDGS:HandleZoneSpawn("..zone.ZoneTitle..")")
     if self.SpawnedPeds then return; end
-	self.SpawnedPeds = {}
-	ESX.TriggerServerCallback('JDGS:GetZoneData', function(zoneData) 
-		if not zoneData then return; end
+    self.SpawnedPeds = {}
+    ESX.TriggerServerCallback('JDGS:GetZoneData', function(zoneData) 
+        if not zoneData then return; end
         self.CanDoAction = true
-		if zoneData.players > 0 then
-			self:SpawnZoneHeat(zone)
-		else
-			self:SpawnZoneBasic(zone)
-		end
-	end, zone.ZoneTitle)    
+        if zoneData.players > 0 then
+            self:SpawnZoneHeat(zone)
+            print("JDGS:HandleZoneHeat("..zone.ZoneTitle..")")
+        else
+            self:SpawnZoneBasic(zone)
+            print("JDGS:HandleZoneSpawn("..zone.ZoneTitle..")")
+        end
+    end, zone.ZoneTitle)    
     TriggerServerEvent('JDGS:SetZonePlayers', zone.ZoneTitle, 1)
 end
 
 function JDGS:HandleZoneDespawn(zone)
+    self.ZoneLoaded = false
+    self.SafeActive = false
     print("JDGS:HandleZoneDespawn("..zone.ZoneTitle..")")
-	TriggerServerEvent('JDGS:SetZonePlayers', zone.ZoneTitle, -1)
-	while self.SpawnedPeds do
-		ESX.TriggerServerCallback('JDGS:GetZoneData', function(zoneData) 
-			if zoneData then
-			    if zoneData.players == 0 then
-                    self.CanDoAction = true
-                    TriggerServerEvent('JDGS:SetZoneSafeLocked', zone.ZoneTitle, 0)
-    				self:DespawnPeds()
-    				self:DespawnObjs()
-                    self:DespawnVehicles()
+    TriggerServerEvent('JDGS:SetZonePlayers', zone.ZoneTitle, -1)
+    Citizen.CreateThread(function(...) 
+        while self.SpawnedPeds do
+            ESX.TriggerServerCallback('JDGS:GetZoneData', function(zoneData) 
+                if zoneData then
+                    if zoneData.players == 0 then
+                        self.CanDoAction = true
+                        TriggerServerEvent('JDGS:SetZoneSafeLocked', zone.ZoneTitle, 0)
+                        self:DespawnPeds()
+                        self:DespawnObjs()
+                        self:DespawnVehicles()
+                    end
                 end
-			end
-		end, zone.ZoneTitle)
-		Citizen.Wait(5000)
-	end
+            end, zone.ZoneTitle)
+            Citizen.Wait(5000)
+        end
+    end)
 end
 
 function JDGS:DespawnPeds()
-	if not self.SpawnedPeds then return; end
-	for k,v in pairs(self.SpawnedPeds) do		
-        DeletePed(v)
+    if not self or not self.SpawnedPeds then return; end
+    if type(self.SpawnedPeds) == "table" then 
+        for k,v in pairs(self.SpawnedPeds) do       
+            DeletePed(v)
+        end
     end
-	self.SpawnedPeds = false    
+    self.SpawnedPeds = false    
 end
 
 function JDGS:DespawnObjs()
-	if not self.SpawnedObjs then return; end
-	for k,v in pairs(self.SpawnedObjs) do
-		DeleteObject(v)
-	end
-	self.SpawnedObjs = false
+    if not self.SpawnedObjs then return; end
+    for k,v in pairs(self.SpawnedObjs) do
+        DeleteObject(v)
+    end
+    self.SpawnedObjs = false
 end
 
 function JDGS:DespawnVehicles()
@@ -644,7 +691,7 @@ end
 function JDGS:LoadVehicles(zone)
     if not ESX or not JUtils then return; end
     self.SpawnedVehicles = self.SpawnedVehicles or {}
-    JUtils:LoadModelTable(zone.Vehicles.Models)  
+    JUtils:LoadModelTable(zone.Vehicles.Models) 
     for k,v in pairs(zone.Vehicles.Positions) do
         ESX.Game.SpawnVehicle(zone.Vehicles.Models[math.random(1,#zone.Vehicles.Models)], v.xyz, v.w, function (vehicle)
             FreezeEntityPosition(vehicle, false)
@@ -654,7 +701,7 @@ function JDGS:LoadVehicles(zone)
 end
 
 function JDGS:LoadSafe(zone)
-	self.SpawnedObjs = self.SpawnedObjs or {}
+    self.SpawnedObjs = self.SpawnedObjs or {}
     local safePos = zone.Positions.SafePos
     local safeObj = JSC:SpawnSafeObject(JSC.SafeObjects, safePos, 0.0)
     for k,v in pairs(safeObj) do table.insert(self.SpawnedObjs, v); end
@@ -669,6 +716,10 @@ function JDGS:LoadSalesEnts(zone)
     local randPos = sellers.Positions[math.random(1, #sellers.Positions)]   
     local weaponHash = JUtils.GetHashKey('WEAPON_COMBATPISTOL')
     local newPed = CreatePed(sellers.Type, randModel, randPos.xyz, randPos.w, true, false)
+    Citizen.Wait(1)
+    self:RequestNetworkControl(newPed, true)
+    SetEntityLoadCollisionFlag(newPed, true)
+
     table.insert(self.SpawnedPeds, newPed)
 
     SetPedRelationshipGroupHash(newPed, JUtils.GetHashKey(zone.EntSettings.Relationship))
@@ -692,6 +743,15 @@ function JDGS:LoadWorkerEnts(zone)
     for k,v in pairs(workers.Positions) do
         local randModel = JUtils.GetHashKey(workers.Models[math.random(1, #workers.Models)])             
         local newPed = CreatePed(workers.Type, randModel, v.xyz, v.w, true, false)
+        Citizen.Wait(1)
+        self:RequestNetworkControl(newPed, true)
+
+        if workers.FreezeEnt then
+            FreezeEntityPosition(newPed, workers.FreezeEnt)
+        elseif zone.EntSettings.FreezeEnt then
+            FreezeEntityPosition(newPed, zone.EntSettings.FreezeEnt)
+        end
+
         local relHash = JUtils.GetHashKey(zone.EntSettings.Relationship)
         table.insert(self.SpawnedPeds, newPed)
 
@@ -715,7 +775,7 @@ function JDGS:LoadGuardEnts(zone, modifier)
 
         local weapons = self:GetEntWeaponTier(heat)
         local count = 0
-        if heat > 75 then count = -10; end
+        --if heat > 75 then count = -10; end
 
         local attempt = 0
         local takenpos = {}
@@ -725,12 +785,21 @@ function JDGS:LoadGuardEnts(zone, modifier)
             local posTaken = false
             for k,v in pairs(takenpos) do 
                 attempt = attempt + 1
+
+
+
                 if v.x == randomPos.x and v.y == randomPos.y and v.z == randomPos.z then 
                     posTaken = true 
+                else
+                    local closestPed = ESX.Game.GetClosestPed(randomPos.xyz)
+                    local closestCoords = GetEntityCoords(closestPed)
+                    local dist = JUtils:GetVecDist(randomPos.xyz, closestCoords)
+                    if dist < 2.0 then posTaken = true; print("DUPE:",dist); end
                 end
             end
 
             if attempt > count + 1000 then
+                if not self.SpawnedPeds then self.SpawnedPeds = true; end
                 return
             end
 
@@ -738,7 +807,11 @@ function JDGS:LoadGuardEnts(zone, modifier)
                 count = count + 1
 
                 local randModel = JUtils.GetHashKey(guards.Models[math.random(1, #guards.Models)])
-                local newPed = CreatePed(guards.Type, randModel, randomPos.xyz, randomPos.w, true, false)   
+                local newPed = CreatePed(guards.Type, randModel, randomPos.xyz, randomPos.w, true, false)  
+                Citizen.Wait(1)
+                self:RequestNetworkControl(newPed, true) 
+                SetEntityLoadCollisionFlag(newPed, true)
+
                 local relHash = JUtils.GetHashKey(zone.EntSettings.Relationship)  
                 table.insert(self.SpawnedPeds, newPed)        
 
@@ -785,15 +858,17 @@ function JDGS:GetEntWeaponTier(heat)
 end
 
 AddEventHandler('esx:onPlayerDeath', function(data)
-	if not JDGS then return; end
-	if JDGS.BeingRobbed then 
+    if not JDGS then return; end
+    if JDGS.BeingRobbed then 
         JDGS:DespawnRobbers()
-		TriggerServerEvent('JDGS:GetRobbed')
-	end
+        TriggerServerEvent('JDGS:GetRobbed')        
+    end
+
+    if JDGS.SafeActive then JDGS.SafeActive = false; end
 end)
 
 RegisterCommand('KillPeds', function(source, args)
-    local playerPed = GetPlayerPed()
+    local playerPed = GetPlayerPed(PlayerId())
     local playerPos = GetEntityCoords(playerPed)
     local weaponHash = JUtils.GetHashKey('WEAPON_STUNGUN')
 
@@ -804,6 +879,9 @@ RegisterCommand('KillPeds', function(source, args)
                 ShootSingleBulletBetweenCoords(targetPos.x, targetPos.y, targetPos.z + 0.5, targetPos, 1000, false, weaponHash, targetPed, true, true, 100)
             end
         end
+
+        Citizen.Wait(2000)
+        JDGS:DespawnPeds()
     end
 end, false)
 
