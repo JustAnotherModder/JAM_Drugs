@@ -2,16 +2,19 @@ local JDGS = JAM.Drugs
 
 function JDGS:ServerStart()
 	local tick = 0
+	local canStart = true
 	while not JAM.SQLReady do
 		Citizen.Wait(0)
 
 		tick = tick + 1
 		if tick > 1000 then
+			canStart = false
 			break
 		end
 	end
-	
-	self:ResetZones()
+	if canStart then
+		self:ResetZones()
+	end
 end
 
 function JDGS:ResetZones()

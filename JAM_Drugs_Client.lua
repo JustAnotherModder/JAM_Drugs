@@ -2,11 +2,16 @@ local JDGS = JAM.Drugs
 local JSC = JAM.SafeCracker
 
 function JDGS:ClientStart()
-    if not self or not ESX then return; end
-    while not ESX.IsPlayerLoaded() do
-        Citizen.Wait(0)
+    if not self then return; end
+    if not ESX then
+        while not ESX do Citizen.Wait(100); end
+        self.ESX = ESX
     end
+    
+    while not ESX.IsPlayerLoaded() do Citizen.Wait(0); end
+    while not JSC or type(JSC) ~= "table" do Citizen.Wait(0); end
 
+    print("JAM_Drugs:Start() - Succecsful")
     self:ClientUpdate()
 end
 
@@ -331,14 +336,10 @@ function JDGS:HandleSafeMinigame(zone)
 
         local playerPed = GetPlayerPed(PlayerId())
 
-        local peds = ESX.Game.GetPeds()
-        for k,v in pairs(peds) do 
-            for key,val in pairs(zone.GuardEnt.Models) do 
-                if JUtils.GetHashKey(val) == v or JUtils.GetHashKey(val) == (v % 0x100000000) then
-                    if not IsEntityDead(v) and not IsPedInCombat(v, playerPed) then
-                        TaskCombatPed(v, playerPed, 0, 16)
-                    end
-                end 
+        for k,v in pairs(self.SpawnedPeds) do 
+            print(k,v)
+            if not IsPedInCombat(v, playerPed) then
+                TaskCombatPed(v, playerPed, 0, 16)
             end 
         end
     end, zone.ZoneTitle)
@@ -481,14 +482,14 @@ function JDGS:SellDrugs(zone, amount)
 end
 
 function JDGS:HandleSnitching(alertPosition)
-    -- local plyPed = PlayerPedId()
-    -- local plyPos = GetEntityCoords(plyPed)
-    -- local alertMsg = 'Someone has snitched on a drug deal.'
-    -- if self.ZoneLoaded and self.ZoneLoaded.Positions.EntryPos then
-    --     plyPos = self.ZoneLoaded.Positions.EntryPos
-    -- end
+    local plyPed = PlayerPedId()
+    local plyPos = GetEntityCoords(plyPed)
+    local alertMsg = 'Someone has snitched on a drug deal.'
+    if self.ZoneLoaded and self.ZoneLoaded.Positions.EntryPos then
+        plyPos = self.ZoneLoaded.Positions.EntryPos
+    end
 
-    -- TriggerServerEvent('esx_addons_gcphone:startCall', 'police', alertMsg, plyPos)
+    TriggerServerEvent('esx_addons_gcphone:startCall', 'police', alertMsg, plyPos)
 end
 
 function JDGS:HandleRobbing(zone, amount)      
@@ -596,18 +597,28 @@ function JDGS:DespawnRobbers()
     end
 end
 
-function JDGS:MarkerTeleport(zone, entering)
-    local playerPed = PlayerPedId()
-    if entering then
-        SetEntityCoords(playerPed, zone.Positions.EntryPos, zone.Positions.EntryHeading, false, false, false)
-    else 
-        SetEntityCoords(playerPed, zone.Positions.ExitPos, zone.Positions.ExitHeading, false, false, false)
-        if self.SpawnedPeds and type(self.SpawnedPeds) == "table" then 
-            for k,v in pairs(self.SpawnedPeds) do 
-                FreezeEntityPosition(v, false)
+function JDGS:MarkerTeleport(zone, exiting)
+    Citizen.CreateThread(function()     
+        local playerPed = GetPlayerPed(PlayerId())
+        if exiting then
+            DoScreenFadeOut(300)
+            Citizen.Wait(400)
+            SetEntityCoords(playerPed, zone.Positions.EntryPos, zone.Positions.EntryHeading, false, false, false)
+            Citizen.Wait(200)
+            DoScreenFadeIn(100)
+        else 
+            DoScreenFadeOut(300)
+            Citizen.Wait(400)
+            SetEntityCoords(playerPed, zone.Positions.ExitPos, zone.Positions.ExitHeading, false, false, false)
+            Citizen.Wait(200)
+            if self.SpawnedPeds and type(self.SpawnedPeds) == "table" then 
+                for k,v in pairs(self.SpawnedPeds) do 
+                    FreezeEntityPosition(v, false)
+                end
             end
-        end 
-    end
+            DoScreenFadeIn(100)
+        end
+    end)
 end
 
 function JDGS:HandleZoneSpawn(zone)
