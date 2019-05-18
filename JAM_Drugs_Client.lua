@@ -11,7 +11,7 @@ function JDGS:ClientStart()
     while not ESX.IsPlayerLoaded() do Citizen.Wait(0); end
     while not JSC or type(JSC) ~= "table" do Citizen.Wait(0); end
 
-    print("JAM_Drugs:Start() - Succecsful")
+    print("JAM_Drugs:Start() - Successful")
     self:ClientUpdate()
 end
 
@@ -46,6 +46,7 @@ function JDGS:VehicleCheck()
             self.CanDoAction = false
             for k,v in pairs(self.SpawnedPeds) do
                 if not IsPedInCombat(v, playerPed) then
+                    self:RequestNetworkControl(v, true)
                     TaskCombatPed(v, playerPed, 0, 16)
                 end
             end
@@ -242,6 +243,14 @@ function JDGS:SellDrugsToPed(buyerPed)
         if buyerPed == v then return; end
     end
 
+    for k,v in pairs(self.SpawnedPeds) do
+        if buyerPed == v then return; end
+    end
+
+    for k,v in pairs(ESX.Game.GetPlayers()) do
+        if GetPlayerPed(v) == buyerPed then return; end
+    end
+
     table.insert(self.PedsThatPurchased, buyerPed)
 
     if IsEntityDead(buyerPed) then return; end
@@ -267,59 +276,15 @@ function JDGS:SellDrugsToPed(buyerPed)
             randomDrug = math.random(1, #userDrugInventory)
         else return; end
 
-        local maxAmount = self.Config.NPCSalesMax
+        local maxAmount = math.random(1,self.Config.NPCSalesMax)
         local salesData
         local drugLabel = (userDrugInventory[randomDrug].label:sub(1,1):lower()..userDrugInventory[randomDrug].label:sub(2))
         local drugValue = userDrugInventory[randomDrug].value
         local drugAmount = userDrugInventory[randomDrug].count
         local profitMargin = (drugValue * self.Config.NPCSalesProfit) / 100
 
-        if maxAmount and maxAmount > 0 then salesData = "Dirty: ~y~$" .. (drugValue + profitMargin) .. "~r~ / Max: ~y~" .. maxAmount
-        else salesData = "Dirty: ~y~$" .. drugValue; end
-
-        local c = JUtils.DrawTextTemplate()
-        c.font = 4
-        c.x = 0.5
-        c.y = 0.36
-        c.text = "~r~How much ~y~" .. drugLabel .. " ~r~do you want to ~y~sell~r~? ( " .. salesData .."~r~ )"
-
-        self.keyboardActive = true
-
-        DisplayOnscreenKeyboard( 0, "","", (maxAmount or drugAmount), "", "", "", 30 )
         local plyPed = GetPlayerPed(PlayerId())
-        TaskTurnPedToFaceEntity(buyerPed, plyPed, -1)
-   
-        while self.keyboardActive do    
-            JUtils.DrawText(c)
-            DrawSprite("commonmenu", "gradient_nav", 0.5, 0.375, 0.32, 0.047, 0.0, 0, 0, 0, 210)
-
-            if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
-                self.keyboardActive = false
-                self.keyboardResult = GetOnscreenKeyboardResult()
-                local num = tonumber(self.keyboardResult)
-                if num ~= nil and num > 0 then
-
-                    if num > maxAmount then num = maxAmount; end
-                    ESX.TriggerServerCallback('JDGS:SellDrug', function (valid)
-                        if not valid then
-                            TriggerEvent('esx:showNotification', "~r~You don't have enough ~y~" .. drugLabel .. " ~r~to sell.")
-                        else
-                            table.insert(self.PedsThatPurchased, buyerPed)
-                            TriggerEvent('esx:showNotification', "~r~You sold ~y~" .. num .. " " .. drugLabel .. " ~r~for ~y~$" .. math.floor((drugValue + profitMargin) * num) .. " ~r~dirty money.")
-                        end
-                    end, drugLabel, drugValue + profitMargin, num) 
-
-                else 
-                    TriggerEvent('esx:showNotification', "~r~Enter a number next time.")
-                end
-
-            elseif self.keyboardActive and UpdateOnscreenKeyboard() ~= 0 then
-                self.keyboardActive = false
-            end            
-            Citizen.Wait(0)
-        end
-
-        TaskTurnPedToFaceEntity(buyerPed, plyPed, 1)
+        TaskTurnPedToFaceEntity(buyerPed, plyPed, 100)
     end)
 end
 
@@ -337,7 +302,6 @@ function JDGS:HandleSafeMinigame(zone)
         local playerPed = GetPlayerPed(PlayerId())
 
         for k,v in pairs(self.SpawnedPeds) do 
-            print(k,v)
             if not IsPedInCombat(v, playerPed) then
                 TaskCombatPed(v, playerPed, 0, 16)
             end 
@@ -367,13 +331,13 @@ function JDGS:PositionCheck()
         if nearestAction == "ActionPos" and self.CanDoAction then self.ActionData.Message = str .. (nearestZone.ActionType:sub(1,1):lower() .. nearestZone.ActionType:sub(2)) .. " ~y~" .. nearestZone.DrugTitle .. "~r~."
         elseif nearestAction == "EntryPos" then self.ActionData.Message = str .. "enter the ~y~" .. nearestZone.ZoneTitle .. "~r~."
         elseif nearestAction == "ExitPos" then self.ActionData.Message = str .. "exit the ~y~" .. nearestZone.ZoneTitle .. "~r~."
-        elseif nearestAction == "SafeActionPos" then self.ActionData.Message = str .. "attempt to ~y~crack ~r~the ~y~safe."
+        elseif nearestAction == "SafeActionPos" and not self.SafeActive then self.ActionData.Message = str .. "attempt to ~y~crack ~r~the ~y~safe."
         end
     else
         self.ActionData.Action = false
         self.ActionData.Zone = false
         self.ActionData.Message = false
-        if self.SafeActive then TriggerEvent('JSC:EndGame'); self.SafeActive = false; end
+        if self.SafeActive then TriggerEvent('JSC:EndGame'); end
     end
 
     if self.Config.EnableBlips and nearestDist < nearestZone.ViewRadius and not self.ActiveBlip then
@@ -601,22 +565,22 @@ function JDGS:MarkerTeleport(zone, exiting)
     Citizen.CreateThread(function()     
         local playerPed = GetPlayerPed(PlayerId())
         if exiting then
-            DoScreenFadeOut(300)
-            Citizen.Wait(400)
+            DoScreenFadeOut(500)
+            Citizen.Wait(600)
             SetEntityCoords(playerPed, zone.Positions.EntryPos, zone.Positions.EntryHeading, false, false, false)
-            Citizen.Wait(200)
-            DoScreenFadeIn(100)
+            Citizen.Wait(600)
+            DoScreenFadeIn(500)
         else 
-            DoScreenFadeOut(300)
-            Citizen.Wait(400)
+            DoScreenFadeOut(500)
+            Citizen.Wait(600)
             SetEntityCoords(playerPed, zone.Positions.ExitPos, zone.Positions.ExitHeading, false, false, false)
-            Citizen.Wait(200)
+            Citizen.Wait(600)
             if self.SpawnedPeds and type(self.SpawnedPeds) == "table" then 
                 for k,v in pairs(self.SpawnedPeds) do 
                     FreezeEntityPosition(v, false)
                 end
             end
-            DoScreenFadeIn(100)
+            DoScreenFadeIn(500)
         end
     end)
 end
@@ -706,7 +670,7 @@ function JDGS:LoadVehicles(zone)
     for k,v in pairs(zone.Vehicles.Positions) do
         ESX.Game.SpawnVehicle(zone.Vehicles.Models[math.random(1,#zone.Vehicles.Models)], v.xyz, v.w, function (vehicle)
             FreezeEntityPosition(vehicle, false)
-            table.insert(self.SpawnedVehicles, vehicle)
+            table.insert(JDGS.SpawnedVehicles, vehicle)
         end)
     end
 end
@@ -791,14 +755,12 @@ function JDGS:LoadGuardEnts(zone, modifier)
         local attempt = 0
         local takenpos = {}
 
-        while count == 0 or count < (heat / 20 * modifier) do
+        while count == 0 or count < ((heat / 20) * modifier) and count < 3 do
             local randomPos = guards.Positions[math.random(1, #guards.Positions)] 
             local posTaken = false
             for k,v in pairs(takenpos) do 
                 attempt = attempt + 1
-
-
-
+                
                 if v.x == randomPos.x and v.y == randomPos.y and v.z == randomPos.z then 
                     posTaken = true 
                 else
