@@ -243,8 +243,10 @@ function JDGS:SellDrugsToPed(buyerPed)
         if buyerPed == v then return; end
     end
 
-    for k,v in pairs(self.SpawnedPeds) do
-        if buyerPed == v then return; end
+    if self.SpawnedPeds then
+        for k,v in pairs(self.SpawnedPeds) do
+            if buyerPed == v then return; end
+        end
     end
 
     for k,v in pairs(ESX.Game.GetPlayers()) do
@@ -395,7 +397,7 @@ function JDGS:OpenSalesMenu(zone)
         DisplayOnscreenKeyboard( 0, "","", (maxAmount or userDrugAmount), "", "", "", 30 )
    
         while self.keyboardActive do    
-            JUtils.DrawText(c)
+            JUtils:DrawText(c)
             DrawSprite("commonmenu", "gradient_nav", 0.5, 0.375, 0.32, 0.047, 0.0, 0, 0, 0, 210)
 
             if self.keyboardActive and UpdateOnscreenKeyboard() == 1 then
