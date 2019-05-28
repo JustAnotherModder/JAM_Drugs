@@ -243,7 +243,7 @@ function JDGS:SellDrugsToPed(buyerPed)
         if buyerPed == v then return; end
     end
 
-    if self.SpawnedPeds then
+    if self.SpawnedPeds and type(self.SpawnedPeds) == "table" then
         for k,v in pairs(self.SpawnedPeds) do
             if buyerPed == v then return; end
         end
